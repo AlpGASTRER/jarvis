@@ -17,7 +17,18 @@ class Jarvis:
         
         # Configure Gemini
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-pro')
+        
+        # Set generation config
+        generation_config = genai.types.GenerationConfig(
+            temperature=0.7,
+            max_output_tokens=150,
+        )
+        
+        # Initialize model with config
+        self.model = genai.GenerativeModel('gemini-pro', generation_config=generation_config)
+        
+        # Initialize chat
+        self.chat = self.model.start_chat(history=[])
         
         # Initialize voice components
         self.recognizer = sr.Recognizer()
@@ -38,9 +49,7 @@ class Jarvis:
         self.code_helper = CodeHelper()
         
         # Initialize conversation history
-        self.conversation_history = [
-            {"role": "system", "content": "You are Jarvis, a helpful AI assistant. You are knowledgeable, friendly, and concise in your responses."}
-        ]
+        self.conversation_history = []
         
         # Command categories
         self.SYSTEM_COMMANDS = {
@@ -98,29 +107,15 @@ class Jarvis:
             return f"Sorry, I encountered an error processing your code query: {str(e)}"
 
     def handle_general_query(self, text):
-        """Handle general conversation using Gemini"""
+        """Handle general conversation using Gemini chat"""
         try:
-            # Add user message to history
+            # Store user message
             self.conversation_history.append(f"Human: {text}")
             
-            # Build conversation context
-            context = "\n".join(self.conversation_history[-5:])  # Last 5 messages
-            prompt = f"""Previous conversation:
-            {context}
+            # Get AI response using chat
+            response = self.chat.send_message(text)
             
-            You are Jarvis, a helpful AI assistant. Be knowledgeable, friendly, and concise.
-            Please respond to the last message."""
-            
-            # Generate response
-            response = self.model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0.7,
-                    max_output_tokens=150,
-                )
-            )
-            
-            # Extract and store response
+            # Store and format AI response
             ai_response = response.text
             self.conversation_history.append(f"Assistant: {ai_response}")
             
@@ -129,6 +124,7 @@ class Jarvis:
                 self.conversation_history = self.conversation_history[-10:]
             
             return ai_response
+            
         except Exception as e:
             return f"Sorry, I encountered an error: {str(e)}"
 
@@ -153,7 +149,8 @@ class Jarvis:
 
     def cmd_clear(self):
         """Clear conversation history"""
-        self.conversation_history = [self.conversation_history[0]]  # Keep only system message
+        self.conversation_history = []
+        self.chat = self.model.start_chat(history=[])  # Reset chat
         return "Conversation history cleared."
 
     def voice_mode(self):
@@ -210,25 +207,34 @@ class Jarvis:
                 print(f"Assistant: {response}")
                 
             except KeyboardInterrupt:
-                print("\nStopping chat mode.")
+                print("\nStopping.")
                 break
             except Exception as e:
                 print(f"Error: {str(e)}")
+                continue
 
 def main():
+    """Main entry point"""
     jarvis = Jarvis()
     
-    # Ask for mode preference
+    print("\nSelect mode:")
+    print("1. Voice")
+    print("2. Chat")
+    
     while True:
-        mode = input("Choose mode (voice/chat): ").lower().strip()
-        if mode == 'voice':
-            jarvis.voice_mode()
+        try:
+            choice = input("Enter choice (1/2): ").strip()
+            if choice == "1":
+                jarvis.voice_mode()
+                break
+            elif choice == "2":
+                jarvis.chat_mode()
+                break
+            else:
+                print("Invalid choice. Please enter 1 or 2.")
+        except KeyboardInterrupt:
+            print("\nExiting.")
             break
-        elif mode == 'chat':
-            jarvis.chat_mode()
-            break
-        else:
-            print("Please choose 'voice' or 'chat'")
 
 if __name__ == "__main__":
     print("Starting Jarvis...")

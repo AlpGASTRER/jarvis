@@ -9,27 +9,28 @@ class CodeHelper:
         if not api_key:
             raise ValueError("Google API key not found in environment variables")
         
-        # Configure the Gemini API
+        # Configure Gemini
         genai.configure(api_key=api_key)
+        
+        # Use the most capable model
         self.model = genai.GenerativeModel('gemini-pro')
+        
+        # Set up the chat
+        self.chat = self.model.start_chat(history=[])
 
     def get_code_help(self, query, language='en'):
         """Get help for a programming-related question using Gemini"""
         try:
-            # Prepare the prompt with context
-            prompt = f"""You are a helpful programming assistant. Please help with this question:
-            {query}"""
+            # Add programming context to the query
+            prompt = f"""As a programming assistant, help with this question. 
+            Include code examples if relevant.
+            
+            Question: {query}"""
             
             # Generate response
-            response = self.model.generate_content(
-                prompt,
-                generation_config=genai.types.GenerationConfig(
-                    temperature=0.7,
-                    max_output_tokens=1000,
-                )
-            )
-            
+            response = self.chat.send_message(prompt)
             return response.text
+            
         except Exception as e:
             return f"Sorry, I encountered an error: {str(e)}"
 
