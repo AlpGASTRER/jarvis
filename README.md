@@ -1,134 +1,78 @@
 # Jarvis AI Assistant
 
-A powerful AI assistant that combines voice interaction, code analysis, and natural language processing using Google's Gemini API.
+A powerful AI assistant that combines voice interaction, code analysis, and natural language processing capabilities.
 
 ## Features
 
-### Voice Interaction
-- Real-time voice recognition
-- Text-to-speech with customizable voices
-- Audio enhancement and noise reduction
-- Support for both streaming and file-based audio
+- **Voice Interaction**
+  - Real-time voice recognition
+  - Fast local text-to-speech using pyttsx3
+  - WebSocket-based audio streaming
+  - Response caching for improved performance
 
-### Code Analysis
-- Multi-language support (12+ programming languages)
-- Syntax analysis and validation
-- Code improvement suggestions
-- Best practices recommendations
-- Security vulnerability detection
-- Complexity scoring
-- Language-specific analysis
+- **Code Analysis**
+  - Semantic code understanding
+  - Best practices recommendations
+  - Security vulnerability detection
+  - Performance optimization suggestions
+  - Code complexity metrics
 
-### AI Capabilities
-- Powered by Google's Gemini AI
-- Context-aware conversations
-- Code understanding and generation
-- Natural language processing
-- Memory of recent interactions
+- **AI Integration**
+  - Google's Gemini AI for natural language processing
+  - Pre-warmed model for faster responses
+  - Context-aware conversations
+  - Code-aware responses
 
-## Supported Programming Languages
-- Python: General-purpose, AI/ML, Web
-- JavaScript/TypeScript: Web, Node.js
-- Java: Enterprise, Android
-- C++: Systems, Games
-- C#: Windows, Unity
-- Go: Cloud, Systems
-- Rust: Systems, WebAssembly
-- Ruby: Web, Scripting
-- PHP: Web Development
-- Swift: iOS, macOS
-- Kotlin: Android, JVM
+## Quick Start
 
-## Getting Started
-
-### Prerequisites
-- Python 3.9 or higher
-- API Keys:
-  - Google API Key (for Gemini)
-  - Wit.ai API Key (for voice recognition)
-
-### Installation
-
-1. Clone the repository:
-```bash
-git clone [your-repo-url]
-cd jarvis
-```
-
-2. Create a virtual environment:
-```bash
-python -m venv venv
-# On Windows
-.\venv\Scripts\activate
-# On Linux/Mac
-source venv/bin/activate
-```
-
-3. Install dependencies:
+1. Install dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Set up environment variables:
+2. Set up environment variables:
 ```bash
-# Create .env file
-echo WIT_EN_KEY=your_wit_key > .env
-echo GOOGLE_API_KEY=your_google_key >> .env
+GOOGLE_API_KEY=your_api_key_here
 ```
 
-5. Run the API:
+3. Run the server:
 ```bash
-python api.py
+uvicorn api:app --reload
 ```
 
-## API Documentation
+4. Connect to:
+- WebSocket: `ws://localhost:8000/ws`
+- HTTP API: `http://localhost:8000`
 
-See [API_DOCUMENTATION.md](API_DOCUMENTATION.md) for detailed API documentation.
+## Architecture
 
-## Deployment
+- FastAPI backend with WebSocket support
+- Local TTS engine for fast responses
+- Caching system for frequently used responses
+- Modular design with separate processors for voice, code, and AI
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for deployment instructions.
+## Performance Optimizations
 
-## Development
-
-### Project Structure
-```
-jarvis/
-├── api.py              # FastAPI application
-├── jarvis.py           # Core Jarvis class
-├── requirements.txt    # Python dependencies
-├── src/
-│   └── utils/
-│       ├── enhanced_code_helper.py    # Code analysis
-│       ├── audio_processor.py         # Audio processing
-│       ├── voice_processor.py         # Voice recognition
-│       └── tts_processor.py           # Text-to-speech
-├── tests/             # Test files
-└── docs/              # Documentation
-```
-
-### Testing
-Run the test client:
-```bash
-python test_voice_api.py
-```
+- Local TTS using pyttsx3 instead of gTTS
+- Response and audio caching
+- Pre-warmed AI model
+- Efficient WebSocket connection management
+- Optimized file handling
 
 ## Security
 
-- API key authentication
-- Rate limiting
-- Input validation
-- Error handling
-- Security analysis for code
-- CORS protection
+- Input validation for file uploads
+- Secure WebSocket connections
+- Environment variable based configuration
+- API key protection
 
 ## Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+Feel free to open issues or submit pull requests for:
+- New features
+- Bug fixes
+- Documentation improvements
+- Performance optimizations
 
 ## License
 

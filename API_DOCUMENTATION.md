@@ -45,9 +45,7 @@ Analyze code and provide suggestions, best practices, and security analysis.
 ```json
 {
     "code": "string",
-    "language": "python | javascript | typescript | java | cpp | csharp | go | rust | ruby | php | swift | kotlin | null",
-    "analysis_type": "full | syntax | suggestions | best_practices | security",
-    "config_path": "string | null"
+    "question": "string"
 }
 ```
 
@@ -57,7 +55,7 @@ curl -X POST "http://localhost:8000/code/analyze" \
      -H "Content-Type: application/json" \
      -d '{
          "code": "def factorial(n):\n    if n <= 1:\n        return 1\n    return n * factorial(n-1)",
-         "analysis_type": "full"
+         "question": "How can I improve this?"
      }'
 ```
 
@@ -70,31 +68,31 @@ curl -X POST "http://localhost:8000/code/analyze" \
         "code_blocks": [
             "def factorial(n):\n    if n <= 1:\n        return 1\n    return n * factorial(n-1)"
         ],
-        "references": []
-    },
-    "suggestions": [
-        "Add input validation for negative numbers",
-        "Consider using iteration instead of recursion for better performance",
-        "Add type hints for better code documentation"
-    ],
-    "best_practices": [
-        "Follow PEP 8 style guide",
-        "Add docstring to document function purpose and parameters",
-        "Consider adding error handling"
-    ],
-    "security_issues": [
-        "Add input validation to prevent stack overflow",
-        "Consider adding maximum recursion depth"
-    ],
-    "complexity_score": 3,
-    "metrics": {
-        "total_lines": 4,
-        "non_empty_lines": 4,
-        "average_line_length": 15.5,
-        "num_functions": 1,
-        "num_classes": 0,
-        "num_imports": 0,
-        "cyclomatic_complexity": 2
+        "references": [],
+        "suggestions": [
+            "Add input validation for negative numbers",
+            "Consider using iteration instead of recursion for better performance",
+            "Add type hints for better code documentation"
+        ],
+        "best_practices": [
+            "Follow PEP 8 style guide",
+            "Add docstring to document function purpose and parameters",
+            "Consider adding error handling"
+        ],
+        "security_issues": [
+            "Add input validation to prevent stack overflow",
+            "Consider adding maximum recursion depth"
+        ],
+        "complexity_score": 3,
+        "metrics": {
+            "total_lines": 4,
+            "non_empty_lines": 4,
+            "average_line_length": 15.5,
+            "num_functions": 1,
+            "num_classes": 0,
+            "num_imports": 0,
+            "cyclomatic_complexity": 2
+        }
     }
 }
 ```
