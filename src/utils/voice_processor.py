@@ -38,11 +38,30 @@ class VoiceProcessor:
     
     Attributes:
         recognizer: SpeechRecognition recognizer instance
+        model: Gemini AI model instance
+        tts_engine: pyttsx3 TTS engine instance
     """
     
     def __init__(self):
-        """Initialize the voice processor with a speech recognizer."""
+        """Initialize the voice processor with a speech recognizer and AI model."""
         self.recognizer = sr.Recognizer()
+        
+        # Initialize Gemini AI once
+        import google.generativeai as genai
+        genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
+        self.model = genai.GenerativeModel('gemini-pro')
+        
+        # Initialize TTS engine
+        import pyttsx3
+        self.tts_engine = pyttsx3.init()
+        self.tts_engine.setProperty('rate', 175)  # Speed of speech
+        self.tts_engine.setProperty('volume', 1.0)  # Volume (0.0 to 1.0)
+
+        # Pre-warm the model with a dummy request
+        try:
+            self.model.generate_content("Hello")
+        except Exception as e:
+            print(f"Model pre-warming failed: {e}")
         
     def _convert_to_audio_data(self, audio_bytes: bytes, sample_rate: int, channels: int) -> sr.AudioData:
         """
@@ -231,15 +250,83 @@ class VoiceProcessor:
             str: AI response
         """
         try:
-            # Initialize Gemini AI
-            import google.generativeai as genai
-            genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
-            model = genai.GenerativeModel('gemini-pro')
-            
-            # Get response
-            response = model.generate_content(text)
+            # Get response using pre-initialized model
+            response = self.model.generate_content(text)
             return response.text
             
         except Exception as e:
             print(f"Error getting AI response: {e}")
             return "I apologize, but I couldn't process your request at the moment."
+
+    def text_to_speech(self, text: str) -> bytes:
+        """
+        Convert text to speech using pyttsx3.
+        
+        Args:
+            text: Text to convert to speech
+            
+        Returns:
+            bytes: WAV audio data, or None if conversion fails
+        """
+        try:
+            import io
+            import wave
+            
+            # Create an in-memory buffer
+            buffer = io.BytesIO()
+            
+            # Save speech to the buffer
+            self.tts_engine.save_to_file(text, 'temp.wav')
+            self.tts_engine.runAndWait()
+            
+            # Read the generated file
+            with open('temp.wav', 'rb') as f:
+                audio_data = f.read()
+            
+            # Clean up
+            import os
+            os.remove('temp.wav')
+            
+            return audio_data
+            
+        except Exception as e:
+            print(f"Error in text-to-speech conversion: {e}")
+            return None
+
+    def stream_tts(self, text: str, chunk_size: int = 4096):
+        """
+        Stream text-to-speech conversion in chunks.
+        
+        Args:
+            text: Text to convert to speech
+            chunk_size: Size of each audio chunk in bytes
+            
+        Yields:
+            bytes: Chunks of MP3 audio data
+        """
+        try:
+            import io
+            import wave
+            
+            # Create an in-memory buffer
+            buffer = io.BytesIO()
+            
+            # Save speech to the buffer
+            self.tts_engine.save_to_file(text, 'temp.wav')
+            self.tts_engine.runAndWait()
+            
+            # Read the generated file
+            with open('temp.wav', 'rb') as f:
+                while True:
+                    chunk = f.read(chunk_size)
+                    if not chunk:
+                        break
+                    yield chunk
+            
+            # Clean up
+            import os
+            os.remove('temp.wav')
+                
+        except Exception as e:
+            print(f"Error in TTS streaming: {e}")
+            return None

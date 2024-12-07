@@ -11,6 +11,7 @@ from colorama import init, Fore, Style
 import pygame
 import speech_recognition as sr
 import os
+import io
 
 # Initialize colorama
 init()
@@ -23,27 +24,27 @@ RATE = 16000
 
 class AudioPlayer:
     def __init__(self):
-        pass
+        pygame.mixer.init()
 
     def play_audio(self, audio_data):
         """Play audio from bytes data"""
         try:
-            # Save audio data to a temporary file with proper WAV headers
-            temp_file = "temp_audio.wav"
-            with wave.open(temp_file, 'wb') as wf:
-                wf.setnchannels(1)  # Mono
-                wf.setsampwidth(2)  # 16-bit
-                wf.setframerate(22050)  # Sample rate
-                wf.writeframes(audio_data)
+            # Save audio data to a temporary file
+            temp_wav = "temp_audio.wav"
+            with open(temp_wav, 'wb') as f:
+                f.write(audio_data)
             
-            # Play the audio
-            pygame.mixer.music.load(temp_file)
-            pygame.mixer.music.play()
-            while pygame.mixer.music.get_busy():
-                time.sleep(0.1)
-                
-            # Clean up
-            os.remove(temp_file)
+            try:
+                # Play the audio
+                pygame.mixer.music.load(temp_wav)
+                pygame.mixer.music.play()
+                while pygame.mixer.music.get_busy():
+                    time.sleep(0.1)
+            finally:
+                # Clean up
+                pygame.mixer.music.unload()
+                if os.path.exists(temp_wav):
+                    os.remove(temp_wav)
             
         except Exception as e:
             print(f"{Fore.RED}Error playing audio: {str(e)}{Style.RESET_ALL}")
@@ -51,7 +52,6 @@ class AudioPlayer:
 class TestClient:
     def __init__(self):
         self.base_url = "http://localhost:8000"
-        pygame.mixer.init()
         
     def record_audio(self):
         """Record audio from microphone and return the audio data"""
@@ -238,7 +238,7 @@ class TestClient:
                 print("Successfully received audio response")
                 
                 # Save to a unique temporary file
-                temp_file = f"temp_audio_{int(time.time()*1000)}.wav"
+                temp_file = f"temp_audio_{int(time.time()*1000)}.mp3"
                 with open(temp_file, 'wb') as f:
                     for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
