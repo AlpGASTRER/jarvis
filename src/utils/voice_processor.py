@@ -26,6 +26,7 @@ from typing import Union, Tuple
 import io
 import wave
 import base64
+import os
 
 class VoiceProcessor:
     """
@@ -181,3 +182,58 @@ class VoiceProcessor:
                 "success": False,
                 "error": str(e)
             }
+
+    def recognize_speech(self, audio_data: bytes) -> str:
+        """
+        Recognize speech from audio data using Wit.ai.
+        
+        Args:
+            audio_data: Raw audio data in bytes
+            
+        Returns:
+            str: Recognized text, or None if recognition failed
+        """
+        try:
+            # Convert audio data to AudioData format
+            audio = self._convert_to_audio_data(audio_data, 16000, 1)
+            
+            # Use Wit.ai to recognize speech
+            text = self.recognizer.recognize_wit(
+                audio,
+                key=os.getenv('WIT_EN_KEY')
+            )
+            return text
+            
+        except sr.UnknownValueError:
+            print("Could not understand audio")
+            return None
+        except sr.RequestError as e:
+            print(f"Could not request results; {e}")
+            return None
+        except Exception as e:
+            print(f"Error recognizing speech: {e}")
+            return None
+
+    def get_ai_response(self, text: str) -> str:
+        """
+        Get AI response for the recognized text.
+        
+        Args:
+            text: Recognized text to process
+            
+        Returns:
+            str: AI response
+        """
+        try:
+            # Initialize Gemini AI
+            import google.generativeai as genai
+            genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
+            model = genai.GenerativeModel('gemini-pro')
+            
+            # Get response
+            response = model.generate_content(text)
+            return response.text
+            
+        except Exception as e:
+            print(f"Error getting AI response: {e}")
+            return "I apologize, but I couldn't process your request at the moment."

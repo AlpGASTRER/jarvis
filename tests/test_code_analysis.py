@@ -148,3 +148,64 @@ def process_data(data):
     assert len(result["best_practices"]) > 0  # Should suggest improvements
     
     print("Best practices test passed")
+
+def test_javascript_analysis(client):
+    """Test JavaScript code analysis."""
+    code = """
+async function fetchUserData(userId) {
+    try {
+        const response = await fetch(`/api/users/${userId}`);
+        if (!response.ok) {
+            throw new Error('Failed to fetch user data');
+        }
+        const data = await response.json();
+        return data;
+    } catch (error) {
+        console.error('Error:', error);
+        throw error;
+    }
+}
+
+class UserManager {
+    constructor() {
+        this.users = new Map();
+    }
+
+    addUser(user) {
+        if (!user.id || !user.name) {
+            throw new Error('Invalid user data');
+        }
+        this.users.set(user.id, user);
+    }
+
+    getUser(id) {
+        return this.users.get(id);
+    }
+}
+"""
+
+    response = client.post(
+        "/code/analyze",
+        json={
+            "code": code,
+            "language": "javascript",
+            "analysis_type": "full"
+        }
+    )
+    
+    assert response.status_code == 200, f"Failed with status {response.status_code}"
+    result = response.json()
+    
+    # Verify analysis results
+    assert result["success"] is True
+    assert result["language"] == "javascript"
+    assert isinstance(result["analysis"], dict)
+    assert len(result["suggestions"]) > 0
+    
+    # Check for specific JavaScript analysis
+    analysis = result["analysis"]
+    assert "complexity" in analysis
+    assert isinstance(analysis["complexity"], (int, float))
+    assert analysis["complexity"] >= 1.0
+
+    print("JavaScript analysis test passed")

@@ -307,29 +307,154 @@ class EnhancedCodeHelper:
         Returns:
             str: Detected programming language
         """
-        # Common language indicators
+        # Language indicators with regex patterns
         indicators = {
-            'python': ['.py', 'def ', 'import ', 'class ', 'print(', 'async def', 'await', '->'],
-            'javascript': ['.js', 'function', 'const ', 'let ', 'var ', '=>', 'async/await', 'console.log'],
-            'typescript': ['.ts', 'interface ', 'type ', 'enum ', 'implements', 'export', 'private', 'public'],
-            'java': ['.java', 'public class', 'private ', 'protected ', 'System.out', 'void ', 'extends'],
-            'cpp': ['.cpp', '#include', 'std::', 'cout <<', 'namespace', 'template<', 'vector<'],
-            'csharp': ['.cs', 'using System', 'namespace', 'public class', 'private ', 'protected', 'async Task'],
-            'go': ['.go', 'package ', 'func ', 'import (', 'fmt.', 'struct {', 'interface {'],
-            'rust': ['.rs', 'fn ', 'let mut', 'impl ', 'trait ', 'pub ', 'use std'],
-            'ruby': ['.rb', 'def ', 'class ', 'require ', 'module ', 'attr_', 'puts '],
-            'php': ['.php', '<?php', 'function ', 'class ', 'public function', 'namespace', '$'],
-            'swift': ['.swift', 'func ', 'var ', 'let ', 'class ', 'struct ', 'protocol '],
-            'kotlin': ['.kt', 'fun ', 'val ', 'var ', 'class ', 'data class', 'suspend ']
+            'python': [
+                r'def\s+\w+\s*\([^)]*\)\s*:', 
+                r'import\s+\w+',
+                r'from\s+\w+\s+import',
+                r'class\s+\w+\s*:',
+                r'print\s*\(',
+                r'if\s+__name__\s*==\s*[\'"]__main__[\'"]'
+            ],
+            'javascript': [
+                r'function\s+\w+\s*\([^)]*\)\s*{',
+                r'const\s+\w+\s*=',
+                r'let\s+\w+\s*=',
+                r'var\s+\w+\s*=',
+                r'async\s+function',
+                r'await\s+\w+',
+                r'console\.',
+                r'export\s+(?:default\s+)?(?:class|function)',
+                r'import\s+.*\s+from\s+[\'"]'
+            ],
+            'typescript': [
+                r'interface\s+\w+\s*{',
+                r'type\s+\w+\s*=',
+                r'enum\s+\w+\s*{',
+                r'implements\s+\w+',
+                r'private\s+\w+:',
+                r'public\s+\w+:',
+                r'protected\s+\w+:',
+                r'readonly\s+\w+:',
+                r'namespace\s+\w+'
+            ],
+            'java': [
+                r'public\s+class\s+\w+',
+                r'private\s+\w+\s+\w+;',
+                r'protected\s+\w+\s+\w+;',
+                r'System\.out\.',
+                r'void\s+\w+\s*\(',
+                r'extends\s+\w+',
+                r'implements\s+\w+',
+                r'@Override',
+                r'import\s+java\.'
+            ],
+            'cpp': [
+                r'#include\s*[<"].*[>"]',
+                r'std::',
+                r'cout\s*<<',
+                r'cin\s*>>',
+                r'namespace\s+\w+',
+                r'template\s*<',
+                r'vector<',
+                r'class\s+\w+\s*:',
+                r'public:|private:|protected:'
+            ],
+            'csharp': [
+                r'using\s+System;',
+                r'namespace\s+\w+',
+                r'public\s+class\s+\w+',
+                r'private\s+\w+\s+\w+;',
+                r'protected\s+\w+\s+\w+;',
+                r'async\s+Task',
+                r'Console\.',
+                r'\[.*\]',  # Attributes
+                r'get;|set;'
+            ],
+            'go': [
+                r'package\s+\w+',
+                r'func\s+\w+\s*\(',
+                r'import\s+\(',
+                r'fmt\.',
+                r'struct\s+{',
+                r'interface\s+{',
+                r'go\s+func',
+                r'chan\s+\w+',
+                r'defer\s+'
+            ],
+            'rust': [
+                r'fn\s+\w+\s*\(',
+                r'let\s+mut\s+\w+',
+                r'impl\s+\w+',
+                r'trait\s+\w+',
+                r'pub\s+\w+',
+                r'use\s+std',
+                r'match\s+\w+',
+                r'Result<',
+                r'Option<'
+            ],
+            'ruby': [
+                r'def\s+\w+',
+                r'class\s+\w+\s*<',
+                r'require\s+[\'"]',
+                r'module\s+\w+',
+                r'attr_',
+                r'puts\s+',
+                r'yield',
+                r'do\s*\|.*\|',
+                r'end$'
+            ],
+            'php': [
+                r'<\?php',
+                r'function\s+\w+\s*\(',
+                r'class\s+\w+',
+                r'public\s+function',
+                r'namespace\s+\w+',
+                r'\$\w+\s*=',
+                r'echo\s+',
+                r'use\s+\w+',
+                r'->\w+'
+            ],
+            'swift': [
+                r'func\s+\w+\s*\(',
+                r'var\s+\w+\s*:',
+                r'let\s+\w+\s*:',
+                r'class\s+\w+\s*:',
+                r'struct\s+\w+\s*{',
+                r'protocol\s+\w+',
+                r'extension\s+\w+',
+                r'guard\s+let',
+                r'@objc'
+            ],
+            'kotlin': [
+                r'fun\s+\w+\s*\(',
+                r'val\s+\w+\s*:',
+                r'var\s+\w+\s*:',
+                r'class\s+\w+\s*[({]',
+                r'data\s+class',
+                r'suspend\s+fun',
+                r'companion\s+object',
+                r'override\s+fun',
+                r'lateinit\s+var'
+            ]
         }
         
-        code = code.lower()
+        # Count matches for each language
+        matches = {lang: 0 for lang in indicators}
         for lang, patterns in indicators.items():
-            if any(pattern.lower() in code for pattern in patterns):
-                return lang
-        
+            for pattern in patterns:
+                if re.search(pattern, code):
+                    matches[lang] += 1
+                    
+        # Return language with most matches, default to 'unknown'
+        if matches:
+            max_matches = max(matches.values())
+            if max_matches > 0:
+                return max(matches.items(), key=lambda x: x[1])[0]
+                
         return 'unknown'
-        
+
     def analyze_code(self, code: str) -> CodeAnalysis:
         """
         Analyze code for complexity and potential improvements.
@@ -344,64 +469,116 @@ class EnhancedCodeHelper:
             LanguageNotSupportedError: If language is not supported
             AnalysisError: If analysis fails
         """
-        language = self.detect_language(code)
-        if language == 'unknown':
-            raise LanguageNotSupportedError("Could not detect programming language")
-            
         try:
-            # Use language-specific analyzer if available
-            analyzer = self.analyzers.get(language)
-            if analyzer:
-                return analyzer.analyze(code)
+            # Detect language if not specified
+            language = self.detect_language(code)
+            if language == 'unknown':
+                raise LanguageNotSupportedError("Could not detect programming language")
             
-            # Fallback to generic analysis
-            return self._generic_analysis(code, language)
+            # Use language-specific analyzer if available
+            if language == "python":
+                analyzer = PythonAnalyzer()
+                return analyzer.analyze(code)
+            else:
+                # Use generic analysis for other languages
+                return self._generic_analysis(code, language)
+                
         except Exception as e:
             raise AnalysisError(f"Analysis failed: {str(e)}")
-    
+
     def _generic_analysis(self, code: str, language: str) -> CodeAnalysis:
         """Perform generic code analysis for unsupported languages."""
+        # Calculate basic metrics first, outside try block
+        metrics = {
+            'total_lines': len(code.split('\n')),
+            'non_empty_lines': len([line for line in code.split('\n') if line.strip()]),
+            'average_line_length': sum(len(line) for line in code.split('\n') if line.strip()) / (len([line for line in code.split('\n') if line.strip()]) or 1),
+            'cyclomatic_complexity': self._calculate_generic_complexity(code)
+        }
+        
         try:
-            metrics = self._calculate_generic_metrics(code)
-            complexity = metrics.get('cyclomatic_complexity', 1.0)
-            suggestions = self.get_suggestions(code, language)
-            code_blocks = self._extract_code_blocks(code)
-            references = self._find_references(code)
+            # Get AI suggestions using Gemini
+            model = genai.GenerativeModel('gemini-pro')
+            prompt = f"""You are a code analyzer. Analyze this {language} code and provide a JSON response with exactly these fields:
+- suggestions: array of strings with specific code improvements
+- best_practices: array of strings with language-specific best practices
+- security_issues: array of strings with security concerns
+- complexity_score: number between 1-10 indicating code complexity
+
+Code to analyze:
+```{language}
+{code}
+```
+
+Respond only with valid JSON. Example format:
+{{
+    "suggestions": ["Use async/await consistently", "Add error retry logic"],
+    "best_practices": ["Follow error handling patterns", "Use TypeScript for better type safety"],
+    "security_issues": ["Validate user input", "Add rate limiting"],
+    "complexity_score": 3.5
+}}"""
+            
+            response = model.generate_content(prompt)
+            try:
+                analysis = json.loads(response.text)
+            except json.JSONDecodeError:
+                # If JSON parsing fails, create a default analysis
+                analysis = {
+                    "suggestions": ["Consider adding input validation", "Add error handling"],
+                    "best_practices": ["Follow language conventions", "Add documentation"],
+                    "security_issues": ["Validate all inputs", "Handle errors properly"],
+                    "complexity_score": metrics['cyclomatic_complexity']
+                }
             
             return CodeAnalysis(
                 language=language,
-                complexity=complexity,
-                suggestions=suggestions,
-                code_blocks=code_blocks,
-                references=references,
+                complexity=float(analysis.get('complexity_score', metrics['cyclomatic_complexity'])),
+                suggestions=analysis.get('suggestions', []),
+                code_blocks=[code],
+                references=[],
                 metrics=metrics
             )
+            
         except Exception as e:
-            raise AnalysisError(f"Generic analysis failed: {str(e)}")
-    
-    def _calculate_generic_metrics(self, code: str) -> Dict[str, Any]:
-        """Calculate generic code metrics."""
-        lines = code.split('\n')
-        non_empty_lines = [line.strip() for line in lines if line.strip()]
+            # Return a basic analysis if anything fails
+            return CodeAnalysis(
+                language=language,
+                complexity=metrics['cyclomatic_complexity'],
+                suggestions=["Consider adding input validation", "Add error handling"],
+                code_blocks=[code],
+                references=[],
+                metrics=metrics
+            )
+
+    def _calculate_generic_complexity(self, code: str) -> float:
+        """Calculate generic code complexity."""
+        complexity = 1.0
         
-        metrics = {
-            'total_lines': len(lines),
-            'non_empty_lines': len(non_empty_lines),
-            'average_line_length': sum(len(line) for line in non_empty_lines) / len(non_empty_lines) if non_empty_lines else 0,
-            'cyclomatic_complexity': 1.0  # Base complexity
+        # Common complexity indicators across languages
+        patterns = {
+            'control_flow': [
+                r'\bif\b', r'\belse\b', r'\belif\b', r'\bfor\b', r'\bwhile\b',
+                r'\btry\b', r'\bcatch\b', r'\bswitch\b', r'\bcase\b'
+            ],
+            'logical_operators': [
+                r'&&', r'\|\|', r'==', r'!=', r'>=', r'<=', r'\?'
+            ],
+            'nesting': [
+                r'{[^{}]*{', r'\([^()]*\('  # Nested braces/parentheses
+            ]
         }
         
-        # Basic complexity factors
-        complexity_indicators = [
-            'if ', 'else:', 'elif ', 'for ', 'while ', 'try:', 'catch ', 'switch',
-            'case ', 'break', 'continue', '?', '&&', '||', '==', '!=', '>=', '<='
-        ]
-        
-        # Add to complexity for each control flow indicator
-        for indicator in complexity_indicators:
-            metrics['cyclomatic_complexity'] += code.lower().count(indicator) * 0.1
-            
-        return metrics
+        for category, category_patterns in patterns.items():
+            for pattern in category_patterns:
+                matches = len(re.findall(pattern, code))
+                if category == 'control_flow':
+                    complexity += matches * 0.2
+                elif category == 'logical_operators':
+                    complexity += matches * 0.1
+                else:  # nesting
+                    complexity += matches * 0.3
+                    
+        return min(10.0, complexity)  # Cap at 10.0
 
     def analyze_syntax(self, code: str, language: str = None) -> Dict:
         """
@@ -812,18 +989,7 @@ Focus on:
         return suggestions
         
     def _extract_code_blocks(self, code: str) -> List[str]:
-        """
-        Extract meaningful code blocks.
-        
-        Splits the provided code into individual blocks, such as functions,
-        classes, and loops.
-        
-        Args:
-            code: Code to extract blocks from
-            
-        Returns:
-            List[str]: List of extracted code blocks
-        """
+        """Extract meaningful code blocks."""
         blocks = []
         current_block = []
         
@@ -840,18 +1006,7 @@ Focus on:
         return blocks
         
     def _find_references(self, code: str) -> List[str]:
-        """
-        Find relevant documentation references.
-        
-        Extracts import statements and module names from the provided code to
-        find relevant documentation references.
-        
-        Args:
-            code: Code to find references for
-            
-        Returns:
-            List[str]: List of relevant documentation references
-        """
+        """Find relevant documentation references."""
         references = []
         
         # Extract imports

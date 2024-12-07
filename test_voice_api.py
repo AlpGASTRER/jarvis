@@ -100,6 +100,38 @@ class TestClient:
         except Exception as e:
             print(f"\nError: {str(e)}\n")
 
+    def test_text_endpoint(self, text: str):
+        """Test POST /text endpoint"""
+        try:
+            print("\nTesting POST /text endpoint...")
+            
+            # Prepare request data
+            data = {
+                "text": text,
+                "mode": "general",
+                "return_audio": False
+            }
+            
+            # Send request
+            response = requests.post(f"{self.base_url}/text", json=data)
+            
+            if response.status_code == 200:
+                result = response.json()
+                print("\nResponse:")
+                print(f"AI Response: {result.get('response', 'N/A')}")
+                
+                # If audio response is present
+                if result.get('audio_response'):
+                    print("\nPlaying audio response...")
+                    audio_data = base64.b64decode(result['audio_response']['audio_base64'])
+                    player = AudioPlayer()
+                    player.play_audio(audio_data)
+            else:
+                print(f"\nError: {response.text}\n")
+                
+        except Exception as e:
+            print(f"\nError: {str(e)}\n")
+
     def test_websocket_endpoint(self):
         """Test the /ws/voice WebSocket endpoint"""
         print("Testing WebSocket endpoint...")

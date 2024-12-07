@@ -33,6 +33,10 @@ import io
 import wave
 import base64
 from src.utils.enhanced_code_helper import EnhancedCodeHelper
+import os
+
+# Initialize core components
+code_helper = EnhancedCodeHelper()
 
 # Initialize FastAPI with metadata
 app = FastAPI(
@@ -47,9 +51,6 @@ app = FastAPI(
     """,
     version="1.0.0"
 )
-
-# Initialize code helper
-code_helper = EnhancedCodeHelper()
 
 # Configure CORS middleware for cross-origin requests
 app.add_middleware(
@@ -154,6 +155,19 @@ class CodeResponse(BaseModel):
     metrics: Optional[Dict[str, Any]]
     error: Optional[str] = None
 
+class TextResponse(BaseModel):
+    """
+    Model for text processing responses.
+    
+    Attributes:
+        success: Whether processing was successful
+        response: Text response
+        audio_response: Optional audio response
+    """
+    success: bool
+    response: str
+    audio_response: Optional[Dict[str, Any]] = None
+
 class ConversationRequest(BaseModel):
     """
     Model for conversation management requests.
@@ -168,7 +182,7 @@ class ConversationRequest(BaseModel):
     conversation_id: Optional[str] = Field(None, description="Conversation ID for continuation")
 
 # API Routes
-@app.post("/text", tags=["Text Processing"])
+@app.post("/text", response_model=TextResponse, tags=["Text"])
 async def process_text(request: TextRequest):
     """
     Process text input and get AI response.
@@ -176,19 +190,43 @@ async def process_text(request: TextRequest):
     Can return both text and audio responses.
     """
     try:
+        # Initialize Gemini AI
+        import google.generativeai as genai
+        genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
+        model = genai.GenerativeModel('gemini-pro')
+        
         # Process based on mode
         if request.mode == "code":
-            response = "Code query not implemented yet"
+            # Use code helper for code-related queries
+            response = code_helper.get_code_help(request.text)
         else:
-            response = "General query not implemented yet"
+            # Get general AI response
+            response = model.generate_content(request.text)
+            response = response.text
+            
+        result = {
+            "success": True,
+            "response": response,
+            "audio_response": None
+        }
         
-        result = {"success": True, "response": response}
-        
-        # Generate audio if requested
+        # Generate audio response if requested
         if request.return_audio:
-            result["audio_response"] = "Audio response not implemented yet"
+            from src.utils.voice_processor import VoiceProcessor
+            processor = VoiceProcessor()
+            audio_data = processor.text_to_speech(
+                response, 
+                voice_settings=request.voice_settings
+            )
+            if audio_data:
+                result["audio_response"] = {
+                    "audio_base64": base64.b64encode(audio_data).decode(),
+                    "sample_rate": 22050,
+                    "channels": 1
+                }
                 
-        return result
+        return JSONResponse(content=result)
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -202,16 +240,40 @@ async def process_voice(
         # Read audio file
         audio_data = await audio_file.read()
         
-        # TODO: Implement voice processing
+        # Initialize voice processor
+        from src.utils.voice_processor import VoiceProcessor
+        voice_processor = VoiceProcessor()
+        
+        # Process audio
+        if enhance_audio:
+            from src.utils.audio_processor import AudioProcessor
+            audio_processor = AudioProcessor()
+            audio_data = audio_processor.enhance_audio(audio_data)
+        
+        # Recognize speech
+        recognized_text = voice_processor.recognize_speech(audio_data)
+        
+        if not recognized_text:
+            return JSONResponse(
+                content={
+                    "success": False,
+                    "error": "Could not recognize speech",
+                    "recognized_text": None,
+                    "audio_used": "enhanced" if enhance_audio else "original",
+                    "ai_response": None
+                }
+            )
+        
+        # Get AI response
+        ai_response = voice_processor.get_ai_response(recognized_text)
+        
         result = {
             "success": True,
-            "text": "Voice processing not implemented yet",
-            "response": "This is a placeholder response"
+            "recognized_text": recognized_text,
+            "audio_used": "enhanced" if enhance_audio else "original",
+            "ai_response": ai_response
         }
         
-        if not result["success"]:
-            raise HTTPException(status_code=400, detail=result.get("error", "Voice processing failed"))
-            
         return JSONResponse(content=result)
         
     except Exception as e:
@@ -376,41 +438,62 @@ async def text_to_speech(
 @app.websocket("/ws/voice")
 async def websocket_voice(websocket: WebSocket):
     """WebSocket endpoint for real-time voice interaction"""
-    await websocket.accept()
-    
     try:
+        await websocket.accept()
+        
+        # Initialize processors
+        from src.utils.voice_processor import VoiceProcessor
+        voice_processor = VoiceProcessor()
+        
         while True:
-            # Receive audio data
-            audio_bytes = await websocket.receive_bytes()
-            if not audio_bytes:
-                continue
-            
-            # TODO: Implement voice processing
-            result = {
-                "success": True,
-                "text": "Voice processing not implemented yet",
-                "response": "This is a placeholder response"
-            }
-            
-            if result["success"]:
-                await websocket.send_json(result)
-            else:
+            try:
+                # Receive audio data
+                data = await websocket.receive_json()
+                audio_data = base64.b64decode(data['audio'])
+                
+                # Process audio
+                recognized_text = voice_processor.recognize_speech(audio_data)
+                
+                # Send recognition result
                 await websocket.send_json({
-                    "success": False,
-                    "error": "Voice processing failed"
+                    "type": "text",
+                    "recognized": recognized_text or "Could not recognize speech",
+                    "response": None
                 })
                 
-    except WebSocketDisconnect:
-        print("Client disconnected")
+                if recognized_text:
+                    # Get AI response
+                    response = voice_processor.get_ai_response(recognized_text)
+                    
+                    # Send text response
+                    await websocket.send_json({
+                        "type": "text",
+                        "recognized": recognized_text,
+                        "response": response
+                    })
+                    
+                    # Generate and send audio response
+                    audio_data = voice_processor.text_to_speech(response)
+                    if audio_data:
+                        await websocket.send_json({
+                            "type": "audio",
+                            "data": base64.b64encode(audio_data).decode()
+                        })
+                        
+            except WebSocketDisconnect:
+                print("Client disconnected")
+                break
+            except Exception as e:
+                print(f"Error processing message: {e}")
+                await websocket.send_json({
+                    "type": "error",
+                    "message": str(e)
+                })
+                
     except Exception as e:
-        print(f"Error in websocket: {str(e)}")
-        try:
-            await websocket.send_json({
-                "success": False,
-                "error": str(e)
-            })
-        except:
-            pass
+        print(f"WebSocket error: {e}")
+        if websocket.client_state != WebSocketState.DISCONNECTED:
+            await websocket.close()
 
 @app.get("/voices", tags=["Speech"])
 async def list_voices():
