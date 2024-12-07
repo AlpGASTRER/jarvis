@@ -41,3 +41,4 @@ src/utils/code_helper.py
 # OS specific files
 .DS_Store
 Thumbs.db
+.env
