@@ -92,6 +92,19 @@ jarvis/
 - `python-dotenv`: Environment variable management
 - Additional dependencies listed in `requirements.txt`
 
+## Deployment
+
+For detailed deployment instructions, including:
+- Local development setup
+- Docker deployment
+- Cloud deployment (AWS)
+- Kubernetes deployment
+- Monitoring and maintenance
+- Security considerations
+- Troubleshooting guide
+
+Please refer to our comprehensive [Deployment Guide](DEPLOYMENT.md).
+
 ## Contributing
 
 Feel free to submit issues, fork the repository, and create pull requests for any improvements.
