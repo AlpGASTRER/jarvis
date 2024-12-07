@@ -1,3 +1,28 @@
+"""
+Enhanced Code Helper Module
+
+This module provides advanced code analysis and assistance capabilities using
+Google's Gemini AI model. It supports multiple programming languages and offers
+various code analysis features including complexity calculation, best practices,
+security analysis, and improvement suggestions.
+
+Key Features:
+- Multi-language support (Python, JavaScript, TypeScript, Java, etc.)
+- Code complexity analysis
+- Language detection
+- Best practices recommendations
+- Security analysis
+- Code improvement suggestions
+- Context-aware code help
+- Documentation reference finding
+
+Dependencies:
+- google.generativeai: For AI-powered code analysis
+- ast: For Python code parsing and analysis
+- dotenv: For environment variable management
+- re: For pattern matching in code
+"""
+
 import google.generativeai as genai
 import os
 from dotenv import load_dotenv
@@ -8,6 +33,16 @@ from dataclasses import dataclass
 
 @dataclass
 class CodeAnalysis:
+    """
+    Data class for storing code analysis results.
+    
+    Attributes:
+        language: Detected programming language
+        complexity: Calculated code complexity score
+        suggestions: List of improvement suggestions
+        code_blocks: List of extracted code blocks
+        references: List of relevant documentation links
+    """
     language: str
     complexity: float
     suggestions: List[str]
@@ -15,25 +50,47 @@ class CodeAnalysis:
     references: List[str]
 
 class EnhancedCodeHelper:
+    """
+    A class providing enhanced code analysis and assistance using Gemini AI.
+    
+    This class combines traditional static code analysis with AI-powered
+    insights to provide comprehensive code assistance. It supports multiple
+    programming languages and provides various analysis features.
+    
+    Attributes:
+        language_configs: Configuration settings for each supported language
+        models: Dictionary of language-specific Gemini models
+        default_model: Default Gemini model for general queries
+    """
+    
     def __init__(self):
+        """
+        Initialize the code helper with language-specific configurations.
+        
+        Loads API key from environment, configures Gemini models for each
+        supported language, and sets up default parameters for code analysis.
+        
+        Raises:
+            ValueError: If Google API key is not found in environment
+        """
         load_dotenv()
         api_key = os.getenv('GOOGLE_API_KEY')
         if not api_key:
             raise ValueError("Google API key not found in environment variables")
         
-        # Configure Gemini
+        # Configure Gemini API
         genai.configure(api_key=api_key)
         
-        # Language-specific configurations
+        # Define language-specific configurations for optimal results
         self.language_configs = {
             'python': {
-                'temperature': 0.3,
+                'temperature': 0.3,  # More precise for Python
                 'top_p': 0.8,
                 'top_k': 40,
                 'max_output_tokens': 2048,
             },
             'javascript': {
-                'temperature': 0.4,
+                'temperature': 0.4,  # Slightly more creative for JS
                 'top_p': 0.9,
                 'top_k': 40,
                 'max_output_tokens': 2048,
@@ -100,13 +157,13 @@ class EnhancedCodeHelper:
             }
         }
         
-        # Initialize models for different languages
+        # Initialize language-specific models with custom configurations
         self.models = {}
         for lang, config in self.language_configs.items():
             generation_config = genai.types.GenerationConfig(**config)
             self.models[lang] = genai.GenerativeModel('gemini-pro', generation_config=generation_config)
         
-        # Default model for general queries
+        # Configure default model for general queries
         default_config = genai.types.GenerationConfig(
             temperature=0.3,
             top_p=0.8,
@@ -116,7 +173,18 @@ class EnhancedCodeHelper:
         self.default_model = genai.GenerativeModel('gemini-pro', generation_config=default_config)
         
     def detect_language(self, code: str) -> str:
-        """Detect programming language from code snippet"""
+        """
+        Detect programming language from code snippet.
+        
+        Uses a combination of language indicators and pattern matching to
+        determine the programming language of the provided code snippet.
+        
+        Args:
+            code: Code snippet to analyze
+            
+        Returns:
+            str: Detected programming language
+        """
         # Common language indicators
         indicators = {
             'python': ['.py', 'def ', 'import ', 'class ', 'print(', 'async def', 'await', '->'],
@@ -141,7 +209,18 @@ class EnhancedCodeHelper:
         return 'unknown'
         
     def analyze_code(self, code: str) -> Optional[CodeAnalysis]:
-        """Analyze code for complexity and potential improvements"""
+        """
+        Analyze code for complexity and potential improvements.
+        
+        Performs a comprehensive analysis of the provided code, including
+        complexity calculation, suggestion generation, and reference finding.
+        
+        Args:
+            code: Code to analyze
+            
+        Returns:
+            CodeAnalysis: Analysis results, or None if analysis fails
+        """
         language = self.detect_language(code)
         
         try:
@@ -164,7 +243,19 @@ class EnhancedCodeHelper:
             return None
             
     def analyze_syntax(self, code: str, language: str = None) -> Dict:
-        """Analyze code syntax for any supported language"""
+        """
+        Analyze code syntax for any supported language.
+        
+        Uses the Gemini model to analyze the code syntax and provide feedback
+        on correctness and best practices.
+        
+        Args:
+            code: Code to analyze
+            language: Programming language (auto-detected if not specified)
+            
+        Returns:
+            Dict: Analysis results, including success flag and error message
+        """
         if not language:
             language = self.detect_language(code)
 
@@ -194,7 +285,18 @@ Provide analysis in the following format:
             }
 
     def _analyze_python(self, code: str) -> CodeAnalysis:
-        """Analyze Python code"""
+        """
+        Analyze Python code.
+        
+        Performs a detailed analysis of the provided Python code, including
+        complexity calculation, suggestion generation, and reference finding.
+        
+        Args:
+            code: Python code to analyze
+            
+        Returns:
+            CodeAnalysis: Analysis results
+        """
         try:
             tree = ast.parse(code)
             
@@ -223,7 +325,18 @@ Provide analysis in the following format:
             return None
             
     def _analyze_rust(self, code: str) -> CodeAnalysis:
-        """Analyze Rust code"""
+        """
+        Analyze Rust code.
+        
+        Performs a detailed analysis of the provided Rust code, including
+        complexity calculation, suggestion generation, and reference finding.
+        
+        Args:
+            code: Rust code to analyze
+            
+        Returns:
+            CodeAnalysis: Analysis results
+        """
         try:
             # Extract code blocks (functions, structs, impls)
             code_blocks = re.findall(r'(fn|struct|impl|trait)\s+\w+[^{]*{[^}]*}', code)
@@ -265,7 +378,18 @@ Provide analysis in the following format:
             return None
             
     def _calculate_complexity(self, tree: ast.AST) -> float:
-        """Calculate code complexity using AST"""
+        """
+        Calculate code complexity using AST.
+        
+        Analyzes the provided AST to calculate a complexity score based on
+        various metrics, including control flow, nesting, and function complexity.
+        
+        Args:
+            tree: AST to analyze
+            
+        Returns:
+            float: Calculated complexity score
+        """
         complexity = 0
         
         for node in ast.walk(tree):
@@ -282,7 +406,18 @@ Provide analysis in the following format:
         return complexity
         
     def _generate_suggestions(self, tree: ast.AST) -> List[str]:
-        """Generate code improvement suggestions"""
+        """
+        Generate code improvement suggestions.
+        
+        Analyzes the provided AST to generate suggestions for improving the code,
+        including refactoring, simplification, and best practices.
+        
+        Args:
+            tree: AST to analyze
+            
+        Returns:
+            List[str]: List of improvement suggestions
+        """
         suggestions = []
         
         for node in ast.walk(tree):
@@ -309,7 +444,18 @@ Provide analysis in the following format:
         return suggestions
         
     def _extract_code_blocks(self, code: str) -> List[str]:
-        """Extract meaningful code blocks"""
+        """
+        Extract meaningful code blocks.
+        
+        Splits the provided code into individual blocks, such as functions,
+        classes, and loops.
+        
+        Args:
+            code: Code to extract blocks from
+            
+        Returns:
+            List[str]: List of extracted code blocks
+        """
         blocks = []
         current_block = []
         
@@ -326,7 +472,18 @@ Provide analysis in the following format:
         return blocks
         
     def _find_references(self, code: str) -> List[str]:
-        """Find relevant documentation references"""
+        """
+        Find relevant documentation references.
+        
+        Extracts import statements and module names from the provided code to
+        find relevant documentation references.
+        
+        Args:
+            code: Code to find references for
+            
+        Returns:
+            List[str]: List of relevant documentation references
+        """
         references = []
         
         # Extract imports
@@ -338,23 +495,43 @@ Provide analysis in the following format:
         return references
         
     def get_code_help(self, query: str, code_context: Optional[str] = None) -> str:
-        """Get enhanced code help with context awareness"""
+        """
+        Get enhanced code help with context awareness.
+        
+        This method combines code analysis with AI-powered assistance to provide
+        contextually relevant help. It considers the programming language,
+        code context, and any available analysis results.
+        
+        Args:
+            query: User's question or request
+            code_context: Optional code snippet for context
+            
+        Returns:
+            str: Detailed response addressing the query
+            
+        Note:
+            The response is tailored based on:
+            - Detected programming language
+            - Code complexity analysis
+            - Identified best practices
+            - Relevant documentation references
+        """
         try:
             # Detect language if code context is provided
             language = self.detect_language(code_context) if code_context else 'unknown'
             
-            # Select appropriate model
+            # Select appropriate model based on language
             model = self.models.get(language, self.default_model)
             
-            # Analyze code if context is provided
+            # Perform code analysis if context is provided
             analysis = None
             if code_context:
                 analysis = self.analyze_code(code_context)
             
-            # Prepare prompt
+            # Generate context-aware prompt
             prompt = self._prepare_prompt(query, language, code_context, analysis)
             
-            # Generate response
+            # Get AI-powered response
             response = model.generate_content(prompt)
             return response.text
             
@@ -362,7 +539,21 @@ Provide analysis in the following format:
             return f"Sorry, I encountered an error: {str(e)}"
             
     def _prepare_prompt(self, query: str, language: str, code_context: Optional[str], analysis: Optional[CodeAnalysis]) -> str:
-        """Prepare context-aware prompt"""
+        """
+        Prepare a context-aware prompt for the AI model.
+        
+        Combines various pieces of information to create a comprehensive prompt
+        that helps the AI model provide more relevant and accurate responses.
+        
+        Args:
+            query: User's question
+            language: Detected programming language
+            code_context: Code snippet for context
+            analysis: Code analysis results if available
+            
+        Returns:
+            str: Formatted prompt combining all available information
+        """
         prompt = [
             "As an expert programming assistant, help with this question.",
             f"\nQuestion: {query}"
@@ -389,7 +580,19 @@ Provide analysis in the following format:
         return "\n".join(prompt)
 
     def get_suggestions(self, code: str, language: str = None) -> List[str]:
-        """Get code improvement suggestions"""
+        """
+        Get code improvement suggestions.
+        
+        Uses AI to analyze code and provide specific suggestions for improvement
+        focusing on organization, performance, error handling, and best practices.
+        
+        Args:
+            code: Code to analyze
+            language: Programming language (auto-detected if not specified)
+            
+        Returns:
+            List[str]: List of improvement suggestions
+        """
         if not language:
             language = self.detect_language(code)
 
@@ -414,7 +617,19 @@ Focus on:
             return []
 
     def get_best_practices(self, code: str, language: str = None) -> List[str]:
-        """Get language-specific best practices"""
+        """
+        Get language-specific best practices.
+        
+        Analyzes code against established best practices for the specific
+        programming language, considering conventions, patterns, and standards.
+        
+        Args:
+            code: Code to analyze
+            language: Programming language (auto-detected if not specified)
+            
+        Returns:
+            List[str]: List of best practice recommendations
+        """
         if not language:
             language = self.detect_language(code)
 
@@ -439,7 +654,19 @@ Focus on:
             return []
 
     def analyze_security(self, code: str, language: str = None) -> List[str]:
-        """Analyze code for security issues"""
+        """
+        Analyze code for security issues.
+        
+        Performs security analysis focusing on common vulnerabilities,
+        input validation, authentication, and secure coding practices.
+        
+        Args:
+            code: Code to analyze
+            language: Programming language (auto-detected if not specified)
+            
+        Returns:
+            List[str]: List of identified security issues
+        """
         if not language:
             language = self.detect_language(code)
 
@@ -464,7 +691,24 @@ Focus on:
             return []
 
     def calculate_complexity(self, code: str, language: str = None) -> float:
-        """Calculate code complexity score"""
+        """
+        Calculate code complexity score.
+        
+        Computes a complexity score based on various metrics including control
+        flow, nesting, and language-specific features. Uses specialized
+        calculations for Python and Rust, with a generic approach for others.
+        
+        Args:
+            code: Code to analyze
+            language: Programming language (auto-detected if not specified)
+            
+        Returns:
+            float: Calculated complexity score
+            
+        Note:
+            Scores are relative and should be used for comparison rather
+            than absolute measurement.
+        """
         if not language:
             language = self.detect_language(code)
 
@@ -477,16 +721,16 @@ Focus on:
                 # Generic complexity calculation for other languages
                 complexity = 0.0
                 
-                # Control flow complexity
+                # Control flow complexity (if, else, loops, etc.)
                 complexity += len(re.findall(r'\b(if|else|for|while|switch|case|try|catch)\b', code)) * 0.5
                 
                 # Function/method complexity
                 complexity += len(re.findall(r'\b(function|def|fn|func|method)\b', code)) * 0.3
                 
-                # Class/struct complexity
+                # Class/type complexity
                 complexity += len(re.findall(r'\b(class|struct|interface|trait|impl)\b', code)) * 0.4
                 
-                # Nesting complexity
+                # Nesting complexity (nested blocks)
                 complexity += len(re.findall(r'[{]\s*[^}]*[{]', code)) * 0.6
                 
                 return round(complexity, 2)
@@ -496,7 +740,18 @@ Focus on:
             return 0.0
 
     def _calculate_python_complexity(self, code: str) -> float:
-        """Calculate Python-specific complexity"""
+        """
+        Calculate Python-specific complexity.
+        
+        Analyzes the provided Python code to calculate a complexity score based
+        on various metrics, including control flow, nesting, and function complexity.
+        
+        Args:
+            code: Python code to analyze
+            
+        Returns:
+            float: Calculated complexity score
+        """
         try:
             tree = ast.parse(code)
             complexity = self._calculate_complexity(tree)
@@ -505,7 +760,18 @@ Focus on:
             return 0.0
 
     def _calculate_rust_complexity(self, code: str) -> float:
-        """Calculate Rust-specific complexity"""
+        """
+        Calculate Rust-specific complexity.
+        
+        Analyzes the provided Rust code to calculate a complexity score based
+        on various metrics, including control flow, pattern matching, and type complexity.
+        
+        Args:
+            code: Rust code to analyze
+            
+        Returns:
+            float: Calculated complexity score
+        """
         try:
             complexity = 0.0
             

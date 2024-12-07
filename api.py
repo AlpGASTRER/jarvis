@@ -1,3 +1,25 @@
+"""
+Jarvis AI Assistant API
+
+This module implements the FastAPI-based REST API for the Jarvis AI Assistant.
+It provides endpoints for text processing, voice recognition, code analysis,
+and real-time voice interaction through WebSocket.
+
+Key Features:
+- Text processing with optional TTS
+- Voice recognition with noise reduction
+- Multi-language code analysis
+- Real-time voice interaction
+- Conversation management
+- Customizable TTS voices
+
+Dependencies:
+- FastAPI: Web framework
+- Pydantic: Data validation
+- uvicorn: ASGI server
+- Jarvis: Core AI assistant functionality
+"""
+
 import uvicorn
 from fastapi import FastAPI, HTTPException, WebSocket, Query, Depends, Header, WebSocketDisconnect, File, Form, UploadFile
 from fastapi.responses import StreamingResponse
@@ -12,6 +34,7 @@ import io
 import wave
 import base64
 
+# Initialize FastAPI with metadata
 app = FastAPI(
     title="Jarvis AI Assistant API",
     description="""
@@ -25,26 +48,45 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware
+# Configure CORS middleware for cross-origin requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Update this in production
+    allow_origins=["*"],  # TODO: Update this in production with specific origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Initialize Jarvis
+# Initialize global Jarvis instance
 jarvis = Jarvis()
 
-# Request Models
+# Request/Response Models
 class TextRequest(BaseModel):
+    """
+    Model for text processing requests.
+    
+    Attributes:
+        text: Input text to process
+        mode: Processing mode (general/code/voice)
+        return_audio: Whether to return TTS audio
+        voice_settings: Custom TTS voice configuration
+    """
     text: str = Field(..., description="The text input to process")
     mode: Optional[str] = Field("general", description="Processing mode: 'general', 'code', or 'voice'")
     return_audio: Optional[bool] = Field(False, description="Whether to return audio response")
     voice_settings: Optional[Dict[str, Any]] = Field(None, description="Custom voice settings (rate, volume, voice)")
 
 class AudioRequest(BaseModel):
+    """
+    Model for audio processing requests.
+    
+    Attributes:
+        audio_base64: Base64 encoded audio data
+        sample_rate: Audio sample rate in Hz
+        channels: Number of audio channels
+        return_audio: Whether to return TTS audio
+        enhance_audio: Whether to apply noise reduction
+    """
     audio_base64: str = Field(..., description="Base64 encoded audio data")
     sample_rate: int = Field(16000, description="Audio sample rate in Hz")
     channels: int = Field(1, description="Number of audio channels")
@@ -52,11 +94,31 @@ class AudioRequest(BaseModel):
     enhance_audio: Optional[bool] = Field(True, description="Whether to apply noise reduction")
 
 class CodeRequest(BaseModel):
+    """
+    Model for code analysis requests.
+    
+    Attributes:
+        code: Source code to analyze
+        language: Programming language
+        analysis_type: Type of analysis to perform
+    """
     code: str = Field(..., description="Code to analyze")
     language: Optional[str] = Field(None, description="Programming language (python, javascript, typescript, java, cpp, csharp, go, rust, ruby, php, swift, kotlin)")
     analysis_type: Optional[str] = Field("full", description="Type of analysis: 'full', 'syntax', 'suggestions', 'best_practices', 'security'")
 
 class CodeResponse(BaseModel):
+    """
+    Model for code analysis responses.
+    
+    Attributes:
+        success: Whether analysis was successful
+        language: Detected/specified language
+        analysis: Detailed analysis results
+        suggestions: Code improvement suggestions
+        best_practices: Best practices recommendations
+        security_issues: Security vulnerabilities found
+        complexity_score: Code complexity metric
+    """
     success: bool
     language: str
     analysis: Dict[str, Any]
@@ -66,6 +128,14 @@ class CodeResponse(BaseModel):
     complexity_score: Optional[float]
 
 class ConversationRequest(BaseModel):
+    """
+    Model for conversation management requests.
+    
+    Attributes:
+        action: Action to perform (start/continue/clear)
+        text: Input text for continuation
+        conversation_id: ID of conversation to continue
+    """
     action: str = Field(..., description="Action to perform: 'start', 'continue', 'clear'")
     text: Optional[str] = Field(None, description="Text for continuation")
     conversation_id: Optional[str] = Field(None, description="Conversation ID for continuation")
@@ -334,5 +404,7 @@ async def root():
         }
     }
 
+# Main entry point
 if __name__ == "__main__":
+    # Start the ASGI server
     uvicorn.run("api:app", host="0.0.0.0", port=8000, reload=True)

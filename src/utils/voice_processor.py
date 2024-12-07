@@ -1,3 +1,24 @@
+"""
+Voice Processing Module
+
+This module handles voice recognition and audio processing tasks for the Jarvis AI Assistant.
+It provides functionality for processing audio data, noise reduction, and speech recognition
+using the Wit.ai service.
+
+Key Features:
+- Audio format conversion
+- Noise reduction using noisereduce
+- Speech recognition via Wit.ai
+- Support for base64 encoded audio
+- Error handling and fallback strategies
+
+Dependencies:
+- speech_recognition: For speech recognition
+- numpy: For audio data manipulation
+- noisereduce: For noise reduction
+- wave: For WAV file handling
+"""
+
 import speech_recognition as sr
 import numpy as np
 import noisereduce as nr
@@ -7,11 +28,36 @@ import wave
 import base64
 
 class VoiceProcessor:
+    """
+    A class for processing voice input and performing speech recognition.
+    
+    This class handles audio data conversion, enhancement, and speech recognition
+    using the Wit.ai service. It supports both raw and base64 encoded audio data,
+    and includes noise reduction capabilities for improved recognition accuracy.
+    
+    Attributes:
+        recognizer: SpeechRecognition recognizer instance
+    """
+    
     def __init__(self):
+        """Initialize the voice processor with a speech recognizer."""
         self.recognizer = sr.Recognizer()
         
     def _convert_to_audio_data(self, audio_bytes: bytes, sample_rate: int, channels: int) -> sr.AudioData:
-        """Convert raw audio bytes to AudioData object"""
+        """
+        Convert raw audio bytes to SpeechRecognition AudioData format.
+        
+        Args:
+            audio_bytes: Raw audio data in bytes
+            sample_rate: Audio sample rate in Hz
+            channels: Number of audio channels (1 for mono, 2 for stereo)
+            
+        Returns:
+            sr.AudioData: Audio data in SpeechRecognition format
+            
+        Note:
+            Uses 16-bit PCM format for audio data
+        """
         # Create an in-memory wave file
         wav_buffer = io.BytesIO()
         with wave.open(wav_buffer, 'wb') as wav_file:
@@ -31,34 +77,59 @@ class VoiceProcessor:
         return audio_data
 
     def process_base64_audio(self, audio_base64: str, sample_rate: int = 16000, channels: int = 1) -> Tuple[sr.AudioData, sr.AudioData]:
-        """Process base64 encoded audio and return both original and enhanced AudioData"""
+        """
+        Process base64 encoded audio data and apply noise reduction.
+        
+        Args:
+            audio_base64: Base64 encoded audio data
+            sample_rate: Audio sample rate in Hz (default: 16000)
+            channels: Number of audio channels (default: 1)
+            
+        Returns:
+            Tuple containing:
+                - Original audio data (sr.AudioData)
+                - Enhanced audio data with noise reduction (sr.AudioData)
+        """
         # Decode base64 to bytes
         audio_bytes = base64.b64decode(audio_base64)
         
-        # Convert to AudioData
+        # Convert to AudioData format
         original_audio = self._convert_to_audio_data(audio_bytes, sample_rate, channels)
         
-        # Convert to numpy array for noise reduction
+        # Convert to numpy array for noise reduction processing
         audio_array = np.frombuffer(original_audio.frame_data, dtype=np.int16)
         
-        # Apply noise reduction
+        # Apply noise reduction using noisereduce library
         reduced_noise = nr.reduce_noise(
             y=audio_array.astype(float),
             sr=sample_rate,
-            stationary=True,
-            prop_decrease=0.75
+            stationary=True,  # Assume stationary noise
+            prop_decrease=0.75  # Noise reduction strength
         )
         
-        # Convert back to 16-bit PCM
+        # Convert back to 16-bit PCM format
         enhanced_audio_bytes = (reduced_noise * 32767).astype(np.int16).tobytes()
         
-        # Create enhanced AudioData
+        # Create enhanced AudioData object
         enhanced_audio = self._convert_to_audio_data(enhanced_audio_bytes, sample_rate, channels)
         
         return original_audio, enhanced_audio
         
     def recognize_wit(self, audio_data: sr.AudioData, wit_key: str) -> str:
-        """Recognize speech using Wit.ai"""
+        """
+        Perform speech recognition using Wit.ai service.
+        
+        Args:
+            audio_data: Audio data in SpeechRecognition format
+            wit_key: Wit.ai API key
+            
+        Returns:
+            str: Recognized text
+            
+        Raises:
+            ValueError: If speech couldn't be understood
+            RuntimeError: If Wit.ai service request fails
+        """
         try:
             return self.recognizer.recognize_wit(audio_data, key=wit_key)
         except sr.UnknownValueError:
@@ -67,9 +138,27 @@ class VoiceProcessor:
             raise RuntimeError(f"Could not request results from Wit.ai service; {str(e)}")
             
     def process_voice(self, audio_base64: str, wit_key: str, sample_rate: int = 16000, channels: int = 1) -> dict:
-        """Process voice data and return recognition results"""
+        """
+        Process voice data and perform speech recognition with fallback strategy.
+        
+        This method attempts recognition on original audio first, then falls back
+        to noise-reduced audio if the first attempt fails.
+        
+        Args:
+            audio_base64: Base64 encoded audio data
+            wit_key: Wit.ai API key
+            sample_rate: Audio sample rate in Hz (default: 16000)
+            channels: Number of audio channels (default: 1)
+            
+        Returns:
+            dict: Recognition results containing:
+                - success: Boolean indicating success
+                - text: Recognized text (if successful)
+                - audio_used: Which audio was used ("original" or "enhanced")
+                - error: Error message (if failed)
+        """
         try:
-            # Process audio
+            # Process audio and apply noise reduction
             original_audio, enhanced_audio = self.process_base64_audio(audio_base64, sample_rate, channels)
             
             # Try recognition with original audio first
@@ -77,7 +166,7 @@ class VoiceProcessor:
                 text = self.recognize_wit(original_audio, wit_key)
                 audio_used = "original"
             except (ValueError, RuntimeError):
-                # Fallback to enhanced audio
+                # Fallback to enhanced audio if original fails
                 text = self.recognize_wit(enhanced_audio, wit_key)
                 audio_used = "enhanced"
                 
