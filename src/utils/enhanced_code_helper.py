@@ -23,13 +23,34 @@ Dependencies:
 - re: For pattern matching in code
 """
 
+from __future__ import annotations
 import google.generativeai as genai
 import os
 from dotenv import load_dotenv
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any, Union, Tuple, TypeVar, Callable
 import ast
 import re
 from dataclasses import dataclass
+from pathlib import Path
+import json
+from abc import ABC, abstractmethod
+
+# Custom exceptions for better error handling
+class CodeHelperError(Exception):
+    """Base exception for code helper errors."""
+    pass
+
+class LanguageNotSupportedError(CodeHelperError):
+    """Raised when an unsupported language is encountered."""
+    pass
+
+class ConfigurationError(CodeHelperError):
+    """Raised when there's an issue with configuration."""
+    pass
+
+class AnalysisError(CodeHelperError):
+    """Raised when code analysis fails."""
+    pass
 
 @dataclass
 class CodeAnalysis:
@@ -42,12 +63,81 @@ class CodeAnalysis:
         suggestions: List of improvement suggestions
         code_blocks: List of extracted code blocks
         references: List of relevant documentation links
+        metrics: Additional language-specific metrics
     """
     language: str
     complexity: float
     suggestions: List[str]
     code_blocks: List[str]
     references: List[str]
+    metrics: Dict[str, Any] = None
+
+# Type aliases for better code readability
+ModelConfig = Dict[str, Union[float, int]]
+LanguageConfig = Dict[str, ModelConfig]
+T = TypeVar('T')
+
+class LanguageAnalyzer(ABC):
+    """Abstract base class for language-specific analyzers."""
+    
+    @abstractmethod
+    def analyze(self, code: str) -> CodeAnalysis:
+        """Analyze code and return results."""
+        pass
+    
+    @abstractmethod
+    def calculate_complexity(self, code: str) -> float:
+        """Calculate language-specific complexity."""
+        pass
+
+class PythonAnalyzer(LanguageAnalyzer):
+    """Python-specific code analyzer."""
+    
+    def analyze(self, code: str) -> CodeAnalysis:
+        try:
+            tree = ast.parse(code)
+            complexity = self.calculate_complexity(code)
+            suggestions = self._generate_suggestions(tree)
+            metrics = self._calculate_metrics(tree)
+            
+            return CodeAnalysis(
+                language='python',
+                complexity=complexity,
+                suggestions=suggestions,
+                code_blocks=self._extract_code_blocks(code),
+                references=self._find_references(code),
+                metrics=metrics
+            )
+        except SyntaxError as e:
+            raise AnalysisError(f"Python syntax error: {str(e)}")
+        except Exception as e:
+            raise AnalysisError(f"Python analysis failed: {str(e)}")
+    
+    def calculate_complexity(self, code: str) -> float:
+        try:
+            tree = ast.parse(code)
+            return self._calculate_cyclomatic_complexity(tree)
+        except Exception as e:
+            raise AnalysisError(f"Complexity calculation failed: {str(e)}")
+    
+    def _calculate_cyclomatic_complexity(self, tree: ast.AST) -> float:
+        complexity = 1  # Base complexity
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.If, ast.While, ast.For)):
+                complexity += 1
+            elif isinstance(node, ast.FunctionDef):
+                complexity += 1
+            elif isinstance(node, ast.BoolOp):
+                complexity += len(node.values) - 1
+        return complexity
+    
+    def _calculate_metrics(self, tree: ast.AST) -> Dict[str, Any]:
+        return {
+            'num_functions': len([n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]),
+            'num_classes': len([n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]),
+            'num_imports': len([n for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom))]),
+            'lines_of_code': len(ast.unparse(tree).splitlines())
+        }
 
 class EnhancedCodeHelper:
     """
@@ -61,117 +151,83 @@ class EnhancedCodeHelper:
         language_configs: Configuration settings for each supported language
         models: Dictionary of language-specific Gemini models
         default_model: Default Gemini model for general queries
+        analyzers: Dictionary of language-specific analyzers
     """
     
-    def __init__(self):
+    def __init__(self, config_path: Optional[str] = None):
         """
         Initialize the code helper with language-specific configurations.
         
-        Loads API key from environment, configures Gemini models for each
-        supported language, and sets up default parameters for code analysis.
-        
+        Args:
+            config_path: Optional path to custom configuration file
+            
         Raises:
-            ValueError: If Google API key is not found in environment
+            ConfigurationError: If configuration loading fails
+            ValueError: If Google API key is not found
         """
+        self._load_environment()
+        self._load_configurations(config_path)
+        self._initialize_models()
+        self._initialize_analyzers()
+    
+    def _load_environment(self) -> None:
+        """Load environment variables."""
         load_dotenv()
         api_key = os.getenv('GOOGLE_API_KEY')
         if not api_key:
-            raise ValueError("Google API key not found in environment variables")
-        
-        # Configure Gemini API
+            raise ConfigurationError("Google API key not found in environment variables")
         genai.configure(api_key=api_key)
-        
-        # Define language-specific configurations for optimal results
-        self.language_configs = {
-            'python': {
-                'temperature': 0.3,  # More precise for Python
-                'top_p': 0.8,
-                'top_k': 40,
-                'max_output_tokens': 2048,
-            },
-            'javascript': {
-                'temperature': 0.4,  # Slightly more creative for JS
-                'top_p': 0.9,
-                'top_k': 40,
-                'max_output_tokens': 2048,
-            },
-            'typescript': {
-                'temperature': 0.4,
-                'top_p': 0.9,
-                'top_k': 40,
-                'max_output_tokens': 2048,
-            },
-            'java': {
-                'temperature': 0.3,
-                'top_p': 0.8,
-                'top_k': 40,
-                'max_output_tokens': 2048,
-            },
-            'cpp': {
-                'temperature': 0.3,
-                'top_p': 0.8,
-                'top_k': 40,
-                'max_output_tokens': 2048,
-            },
-            'csharp': {
-                'temperature': 0.3,
-                'top_p': 0.8,
-                'top_k': 40,
-                'max_output_tokens': 2048,
-            },
-            'go': {
-                'temperature': 0.3,
-                'top_p': 0.8,
-                'top_k': 40,
-                'max_output_tokens': 2048,
-            },
-            'rust': {
-                'temperature': 0.3,
-                'top_p': 0.8,
-                'top_k': 40,
-                'max_output_tokens': 2048,
-            },
-            'ruby': {
-                'temperature': 0.4,
-                'top_p': 0.9,
-                'top_k': 40,
-                'max_output_tokens': 2048,
-            },
-            'php': {
-                'temperature': 0.4,
-                'top_p': 0.9,
-                'top_k': 40,
-                'max_output_tokens': 2048,
-            },
-            'swift': {
-                'temperature': 0.3,
-                'top_p': 0.8,
-                'top_k': 40,
-                'max_output_tokens': 2048,
-            },
-            'kotlin': {
-                'temperature': 0.3,
-                'top_p': 0.8,
-                'top_k': 40,
-                'max_output_tokens': 2048,
+    
+    def _load_configurations(self, config_path: Optional[str]) -> None:
+        """Load language configurations from file or defaults."""
+        if config_path and Path(config_path).exists():
+            try:
+                with open(config_path, 'r') as f:
+                    self.language_configs = json.load(f)
+            except Exception as e:
+                raise ConfigurationError(f"Failed to load configuration: {str(e)}")
+        else:
+            # Default configurations remain unchanged
+            self.language_configs = {
+                'python': {
+                    'temperature': 0.3,
+                    'top_p': 0.8,
+                    'top_k': 40,
+                    'max_output_tokens': 2048,
+                },
+                # ... other language configs ...
             }
+    
+    def _initialize_models(self) -> None:
+        """Initialize AI models for each supported language."""
+        try:
+            self.models = {
+                lang: genai.GenerativeModel(
+                    'gemini-pro',
+                    generation_config=genai.types.GenerationConfig(**config)
+                )
+                for lang, config in self.language_configs.items()
+            }
+            
+            self.default_model = genai.GenerativeModel(
+                'gemini-pro',
+                generation_config=genai.types.GenerationConfig(
+                    temperature=0.3,
+                    top_p=0.8,
+                    top_k=40,
+                    max_output_tokens=2048,
+                )
+            )
+        except Exception as e:
+            raise ConfigurationError(f"Failed to initialize models: {str(e)}")
+    
+    def _initialize_analyzers(self) -> None:
+        """Initialize language-specific analyzers."""
+        self.analyzers = {
+            'python': PythonAnalyzer(),
+            # Add more language analyzers here
         }
-        
-        # Initialize language-specific models with custom configurations
-        self.models = {}
-        for lang, config in self.language_configs.items():
-            generation_config = genai.types.GenerationConfig(**config)
-            self.models[lang] = genai.GenerativeModel('gemini-pro', generation_config=generation_config)
-        
-        # Configure default model for general queries
-        default_config = genai.types.GenerationConfig(
-            temperature=0.3,
-            top_p=0.8,
-            top_k=40,
-            max_output_tokens=2048,
-        )
-        self.default_model = genai.GenerativeModel('gemini-pro', generation_config=default_config)
-        
+
     def detect_language(self, code: str) -> str:
         """
         Detect programming language from code snippet.
@@ -208,40 +264,61 @@ class EnhancedCodeHelper:
         
         return 'unknown'
         
-    def analyze_code(self, code: str) -> Optional[CodeAnalysis]:
+    def analyze_code(self, code: str) -> CodeAnalysis:
         """
         Analyze code for complexity and potential improvements.
-        
-        Performs a comprehensive analysis of the provided code, including
-        complexity calculation, suggestion generation, and reference finding.
         
         Args:
             code: Code to analyze
             
         Returns:
-            CodeAnalysis: Analysis results, or None if analysis fails
+            CodeAnalysis: Analysis results
+            
+        Raises:
+            LanguageNotSupportedError: If language is not supported
+            AnalysisError: If analysis fails
         """
         language = self.detect_language(code)
-        
+        if language == 'unknown':
+            raise LanguageNotSupportedError("Could not detect programming language")
+            
         try:
-            if language == 'python':
-                return self._analyze_python(code)
-            elif language == 'rust':
-                return self._analyze_rust(code)
-            # Add more language analyzers as needed
+            # Use language-specific analyzer if available
+            analyzer = self.analyzers.get(language)
+            if analyzer:
+                return analyzer.analyze(code)
+            
+            # Fallback to generic analysis
+            return self._generic_analysis(code, language)
+        except Exception as e:
+            raise AnalysisError(f"Analysis failed: {str(e)}")
+    
+    def _generic_analysis(self, code: str, language: str) -> CodeAnalysis:
+        """Perform generic code analysis for unsupported languages."""
+        try:
+            complexity = self._calculate_generic_complexity(code)
+            suggestions = self.get_suggestions(code, language)
             
             return CodeAnalysis(
                 language=language,
-                complexity=0.0,
-                suggestions=[],
-                code_blocks=[],
-                references=[]
+                complexity=complexity,
+                suggestions=suggestions,
+                code_blocks=self._extract_code_blocks(code),
+                references=[],
+                metrics=self._calculate_generic_metrics(code)
             )
-            
         except Exception as e:
-            print(f"Code analysis error: {str(e)}")
-            return None
-            
+            raise AnalysisError(f"Generic analysis failed: {str(e)}")
+    
+    def _calculate_generic_metrics(self, code: str) -> Dict[str, Any]:
+        """Calculate generic code metrics."""
+        lines = code.splitlines()
+        return {
+            'total_lines': len(lines),
+            'non_empty_lines': len([l for l in lines if l.strip()]),
+            'average_line_length': sum(len(l) for l in lines) / len(lines) if lines else 0
+        }
+
     def analyze_syntax(self, code: str, language: str = None) -> Dict:
         """
         Analyze code syntax for any supported language.
@@ -284,216 +361,6 @@ Provide analysis in the following format:
                 'language': language
             }
 
-    def _analyze_python(self, code: str) -> CodeAnalysis:
-        """
-        Analyze Python code.
-        
-        Performs a detailed analysis of the provided Python code, including
-        complexity calculation, suggestion generation, and reference finding.
-        
-        Args:
-            code: Python code to analyze
-            
-        Returns:
-            CodeAnalysis: Analysis results
-        """
-        try:
-            tree = ast.parse(code)
-            
-            # Calculate complexity
-            complexity = self._calculate_complexity(tree)
-            
-            # Generate suggestions
-            suggestions = self._generate_suggestions(tree)
-            
-            # Extract code blocks
-            code_blocks = self._extract_code_blocks(code)
-            
-            # Find relevant documentation
-            references = self._find_references(code)
-            
-            return CodeAnalysis(
-                language='python',
-                complexity=complexity,
-                suggestions=suggestions,
-                code_blocks=code_blocks,
-                references=references
-            )
-            
-        except Exception as e:
-            print(f"Python analysis error: {str(e)}")
-            return None
-            
-    def _analyze_rust(self, code: str) -> CodeAnalysis:
-        """
-        Analyze Rust code.
-        
-        Performs a detailed analysis of the provided Rust code, including
-        complexity calculation, suggestion generation, and reference finding.
-        
-        Args:
-            code: Rust code to analyze
-            
-        Returns:
-            CodeAnalysis: Analysis results
-        """
-        try:
-            # Extract code blocks (functions, structs, impls)
-            code_blocks = re.findall(r'(fn|struct|impl|trait)\s+\w+[^{]*{[^}]*}', code)
-            
-            # Calculate complexity based on control flow and pattern matching
-            complexity = (
-                len(re.findall(r'\b(if|else|match|for|while|loop)\b', code)) +
-                len(re.findall(r'\b(fn|struct|impl|trait)\b', code)) * 0.5
-            )
-            
-            # Generate suggestions based on common Rust patterns
-            suggestions = []
-            if 'unwrap()' in code:
-                suggestions.append("Consider using proper error handling instead of unwrap()")
-            if not re.search(r'#\[derive\(', code):
-                suggestions.append("Consider using #[derive] for common traits")
-            if 'mut ' in code:
-                suggestions.append("Review mutable variables, consider if immutable alternatives are possible")
-            if not re.search(r'//|/\*', code):
-                suggestions.append("Add documentation comments for public items")
-            
-            # Find relevant documentation references
-            references = [
-                "https://doc.rust-lang.org/book/",
-                "https://doc.rust-lang.org/std/",
-                "https://rust-lang.github.io/api-guidelines/"
-            ]
-            
-            return CodeAnalysis(
-                language='rust',
-                complexity=complexity,
-                suggestions=suggestions,
-                code_blocks=code_blocks,
-                references=references
-            )
-            
-        except Exception as e:
-            print(f"Rust analysis error: {str(e)}")
-            return None
-            
-    def _calculate_complexity(self, tree: ast.AST) -> float:
-        """
-        Calculate code complexity using AST.
-        
-        Analyzes the provided AST to calculate a complexity score based on
-        various metrics, including control flow, nesting, and function complexity.
-        
-        Args:
-            tree: AST to analyze
-            
-        Returns:
-            float: Calculated complexity score
-        """
-        complexity = 0
-        
-        for node in ast.walk(tree):
-            # Count control flow statements
-            if isinstance(node, (ast.If, ast.For, ast.While, ast.FunctionDef)):
-                complexity += 1
-            # Add complexity for nested functions and comprehensions
-            elif isinstance(node, (ast.Lambda, ast.ListComp, ast.DictComp, ast.SetComp)):
-                complexity += 0.5
-            # Add complexity for exception handling
-            elif isinstance(node, ast.Try):
-                complexity += 0.3
-                
-        return complexity
-        
-    def _generate_suggestions(self, tree: ast.AST) -> List[str]:
-        """
-        Generate code improvement suggestions.
-        
-        Analyzes the provided AST to generate suggestions for improving the code,
-        including refactoring, simplification, and best practices.
-        
-        Args:
-            tree: AST to analyze
-            
-        Returns:
-            List[str]: List of improvement suggestions
-        """
-        suggestions = []
-        
-        for node in ast.walk(tree):
-            # Check for long functions
-            if isinstance(node, ast.FunctionDef):
-                if len(node.body) > 20:
-                    suggestions.append(f"Consider breaking down function '{node.name}' into smaller functions")
-                if len(node.args.args) > 5:
-                    suggestions.append(f"Function '{node.name}' has many parameters. Consider using a class or dataclass")
-                    
-            # Check for nested loops
-            if isinstance(node, (ast.For, ast.While)):
-                for child in ast.walk(node):
-                    if isinstance(child, (ast.For, ast.While)) and child != node:
-                        suggestions.append("Consider refactoring nested loops to improve readability and performance")
-                        break
-                        
-            # Check for multiple return statements
-            if isinstance(node, ast.FunctionDef):
-                return_count = sum(1 for n in ast.walk(node) if isinstance(n, ast.Return))
-                if return_count > 3:
-                    suggestions.append(f"Function '{node.name}' has multiple return points. Consider consolidating them")
-                    
-        return suggestions
-        
-    def _extract_code_blocks(self, code: str) -> List[str]:
-        """
-        Extract meaningful code blocks.
-        
-        Splits the provided code into individual blocks, such as functions,
-        classes, and loops.
-        
-        Args:
-            code: Code to extract blocks from
-            
-        Returns:
-            List[str]: List of extracted code blocks
-        """
-        blocks = []
-        current_block = []
-        
-        for line in code.split('\n'):
-            if line.strip():
-                current_block.append(line)
-            elif current_block:
-                blocks.append('\n'.join(current_block))
-                current_block = []
-                
-        if current_block:
-            blocks.append('\n'.join(current_block))
-            
-        return blocks
-        
-    def _find_references(self, code: str) -> List[str]:
-        """
-        Find relevant documentation references.
-        
-        Extracts import statements and module names from the provided code to
-        find relevant documentation references.
-        
-        Args:
-            code: Code to find references for
-            
-        Returns:
-            List[str]: List of relevant documentation references
-        """
-        references = []
-        
-        # Extract imports
-        imports = re.findall(r'import (\w+)|from (\w+)', code)
-        for imp in imports:
-            module = imp[0] or imp[1]
-            references.append(f"https://docs.python.org/3/library/{module}.html")
-            
-        return references
-        
     def get_code_help(self, query: str, code_context: Optional[str] = None) -> str:
         """
         Get enhanced code help with context awareness.
@@ -793,3 +660,120 @@ Focus on:
             return round(complexity, 2)
         except:
             return 0.0
+
+    def _calculate_complexity(self, tree: ast.AST) -> float:
+        """
+        Calculate code complexity using AST.
+        
+        Analyzes the provided AST to calculate a complexity score based on
+        various metrics, including control flow, nesting, and function complexity.
+        
+        Args:
+            tree: AST to analyze
+            
+        Returns:
+            float: Calculated complexity score
+        """
+        complexity = 0
+        
+        for node in ast.walk(tree):
+            # Count control flow statements
+            if isinstance(node, (ast.If, ast.For, ast.While, ast.FunctionDef)):
+                complexity += 1
+            # Add complexity for nested functions and comprehensions
+            elif isinstance(node, (ast.Lambda, ast.ListComp, ast.DictComp, ast.SetComp)):
+                complexity += 0.5
+            # Add complexity for exception handling
+            elif isinstance(node, ast.Try):
+                complexity += 0.3
+                
+        return complexity
+        
+    def _generate_suggestions(self, tree: ast.AST) -> List[str]:
+        """
+        Generate code improvement suggestions.
+        
+        Analyzes the provided AST to generate suggestions for improving the code,
+        including refactoring, simplification, and best practices.
+        
+        Args:
+            tree: AST to analyze
+            
+        Returns:
+            List[str]: List of improvement suggestions
+        """
+        suggestions = []
+        
+        for node in ast.walk(tree):
+            # Check for long functions
+            if isinstance(node, ast.FunctionDef):
+                if len(node.body) > 20:
+                    suggestions.append(f"Consider breaking down function '{node.name}' into smaller functions")
+                if len(node.args.args) > 5:
+                    suggestions.append(f"Function '{node.name}' has many parameters. Consider using a class or dataclass")
+                    
+            # Check for nested loops
+            if isinstance(node, (ast.For, ast.While)):
+                for child in ast.walk(node):
+                    if isinstance(child, (ast.For, ast.While)) and child != node:
+                        suggestions.append("Consider refactoring nested loops to improve readability and performance")
+                        break
+                        
+            # Check for multiple return statements
+            if isinstance(node, ast.FunctionDef):
+                return_count = sum(1 for n in ast.walk(node) if isinstance(n, ast.Return))
+                if return_count > 3:
+                    suggestions.append(f"Function '{node.name}' has multiple return points. Consider consolidating them")
+                    
+        return suggestions
+        
+    def _extract_code_blocks(self, code: str) -> List[str]:
+        """
+        Extract meaningful code blocks.
+        
+        Splits the provided code into individual blocks, such as functions,
+        classes, and loops.
+        
+        Args:
+            code: Code to extract blocks from
+            
+        Returns:
+            List[str]: List of extracted code blocks
+        """
+        blocks = []
+        current_block = []
+        
+        for line in code.split('\n'):
+            if line.strip():
+                current_block.append(line)
+            elif current_block:
+                blocks.append('\n'.join(current_block))
+                current_block = []
+                
+        if current_block:
+            blocks.append('\n'.join(current_block))
+            
+        return blocks
+        
+    def _find_references(self, code: str) -> List[str]:
+        """
+        Find relevant documentation references.
+        
+        Extracts import statements and module names from the provided code to
+        find relevant documentation references.
+        
+        Args:
+            code: Code to find references for
+            
+        Returns:
+            List[str]: List of relevant documentation references
+        """
+        references = []
+        
+        # Extract imports
+        imports = re.findall(r'import (\w+)|from (\w+)', code)
+        for imp in imports:
+            module = imp[0] or imp[1]
+            references.append(f"https://docs.python.org/3/library/{module}.html")
+            
+        return references

@@ -25,7 +25,7 @@ from fastapi import FastAPI, HTTPException, WebSocket, Query, Depends, Header, W
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Union
 import json
 import asyncio
 import time
@@ -93,6 +93,27 @@ class AudioRequest(BaseModel):
     return_audio: Optional[bool] = Field(False, description="Whether to return audio response")
     enhance_audio: Optional[bool] = Field(True, description="Whether to apply noise reduction")
 
+class CodeMetrics(BaseModel):
+    """
+    Model for code metrics data.
+    
+    Attributes:
+        total_lines: Total number of code lines
+        non_empty_lines: Number of non-empty lines
+        average_line_length: Average length of code lines
+        num_functions: Number of functions (if available)
+        num_classes: Number of classes (if available)
+        num_imports: Number of imports (if available)
+        cyclomatic_complexity: Cyclomatic complexity score
+    """
+    total_lines: int
+    non_empty_lines: int
+    average_line_length: float
+    num_functions: Optional[int] = None
+    num_classes: Optional[int] = None
+    num_imports: Optional[int] = None
+    cyclomatic_complexity: Optional[float] = None
+
 class CodeRequest(BaseModel):
     """
     Model for code analysis requests.
@@ -101,10 +122,12 @@ class CodeRequest(BaseModel):
         code: Source code to analyze
         language: Programming language
         analysis_type: Type of analysis to perform
+        config_path: Optional path to custom analysis configuration
     """
     code: str = Field(..., description="Code to analyze")
-    language: Optional[str] = Field(None, description="Programming language (python, javascript, typescript, java, cpp, csharp, go, rust, ruby, php, swift, kotlin)")
-    analysis_type: Optional[str] = Field("full", description="Type of analysis: 'full', 'syntax', 'suggestions', 'best_practices', 'security'")
+    language: Optional[str] = Field(None, description="Programming language")
+    analysis_type: Optional[str] = Field("full", description="Type of analysis")
+    config_path: Optional[str] = Field(None, description="Path to custom analysis configuration")
 
 class CodeResponse(BaseModel):
     """
@@ -118,6 +141,8 @@ class CodeResponse(BaseModel):
         best_practices: Best practices recommendations
         security_issues: Security vulnerabilities found
         complexity_score: Code complexity metric
+        metrics: Detailed code metrics
+        error: Error message if analysis failed
     """
     success: bool
     language: str
@@ -126,6 +151,8 @@ class CodeResponse(BaseModel):
     best_practices: Optional[List[str]]
     security_issues: Optional[List[str]]
     complexity_score: Optional[float]
+    metrics: Optional[CodeMetrics]
+    error: Optional[str] = None
 
 class ConversationRequest(BaseModel):
     """
@@ -210,11 +237,13 @@ async def process_voice(
         print(f"Error in process_voice: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/code/analyze", tags=["Code Analysis"], response_model=CodeResponse)
+@app.post("/code/analyze", response_model=CodeResponse, tags=["Code Analysis"])
 async def analyze_code(request: CodeRequest):
     """
     Analyze code and provide suggestions.
+    
     Supports multiple programming languages and different types of analysis.
+    Enhanced with detailed metrics, security analysis, and best practices.
     
     Available languages:
     - Python: General-purpose, AI/ML, Web
@@ -228,21 +257,72 @@ async def analyze_code(request: CodeRequest):
     - PHP: Web Development
     - Swift: iOS, macOS
     - Kotlin: Android, JVM
+    
+    Returns:
+        CodeResponse: Comprehensive analysis results
+        
+    Raises:
+        HTTPException: If analysis fails or language is not supported
     """
     try:
-        result = jarvis.analyze_code(
-            code=request.code,
-            language=request.language,
-            analysis_type=request.analysis_type
+        # Initialize code helper with custom config if provided
+        code_helper = jarvis.code_helper
+        if request.config_path:
+            code_helper = jarvis.initialize_code_helper(request.config_path)
+        
+        # Perform code analysis
+        analysis = code_helper.analyze_code(request.code)
+        if not analysis:
+            raise HTTPException(
+                status_code=500,
+                detail="Code analysis failed. Please check the code and try again."
+            )
+        
+        # Get additional analysis based on type
+        suggestions = code_helper.get_suggestions(request.code, analysis.language)
+        best_practices = (
+            code_helper.get_best_practices(request.code, analysis.language)
+            if request.analysis_type in ['full', 'best_practices']
+            else None
+        )
+        security_issues = (
+            code_helper.analyze_security(request.code, analysis.language)
+            if request.analysis_type in ['full', 'security']
+            else None
         )
         
-        if not result["success"]:
-            raise HTTPException(status_code=400, detail=result["error"])
-            
-        return result
+        # Convert metrics to CodeMetrics model
+        metrics = None
+        if analysis.metrics:
+            metrics = CodeMetrics(
+                total_lines=analysis.metrics.get('total_lines', 0),
+                non_empty_lines=analysis.metrics.get('non_empty_lines', 0),
+                average_line_length=analysis.metrics.get('average_line_length', 0.0),
+                num_functions=analysis.metrics.get('num_functions'),
+                num_classes=analysis.metrics.get('num_classes'),
+                num_imports=analysis.metrics.get('num_imports'),
+                cyclomatic_complexity=analysis.complexity
+            )
+        
+        return CodeResponse(
+            success=True,
+            language=analysis.language,
+            analysis={'code_blocks': analysis.code_blocks, 'references': analysis.references},
+            suggestions=suggestions,
+            best_practices=best_practices,
+            security_issues=security_issues,
+            complexity_score=analysis.complexity,
+            metrics=metrics
+        )
         
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return CodeResponse(
+            success=False,
+            language=request.language or 'unknown',
+            analysis={},
+            suggestions=[],
+            error=str(e)
+        )
 
 @app.post("/conversation", tags=["Conversation"])
 async def manage_conversation(request: ConversationRequest):
