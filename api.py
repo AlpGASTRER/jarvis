@@ -53,8 +53,17 @@ class AudioRequest(BaseModel):
 
 class CodeRequest(BaseModel):
     code: str = Field(..., description="Code to analyze")
-    language: Optional[str] = Field(None, description="Programming language")
-    analysis_type: Optional[str] = Field("full", description="Type of analysis: 'full', 'syntax', 'suggestions'")
+    language: Optional[str] = Field(None, description="Programming language (python, javascript, typescript, java, cpp, csharp, go, rust, ruby, php, swift, kotlin)")
+    analysis_type: Optional[str] = Field("full", description="Type of analysis: 'full', 'syntax', 'suggestions', 'best_practices', 'security'")
+
+class CodeResponse(BaseModel):
+    success: bool
+    language: str
+    analysis: Dict[str, Any]
+    suggestions: List[str]
+    best_practices: Optional[List[str]]
+    security_issues: Optional[List[str]]
+    complexity_score: Optional[float]
 
 class ConversationRequest(BaseModel):
     action: str = Field(..., description="Action to perform: 'start', 'continue', 'clear'")
@@ -131,33 +140,37 @@ async def process_voice(
         print(f"Error in process_voice: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/code/analyze", tags=["Code Analysis"])
+@app.post("/code/analyze", tags=["Code Analysis"], response_model=CodeResponse)
 async def analyze_code(request: CodeRequest):
     """
     Analyze code and provide suggestions.
     Supports multiple programming languages and different types of analysis.
+    
+    Available languages:
+    - Python: General-purpose, AI/ML, Web
+    - JavaScript/TypeScript: Web, Node.js
+    - Java: Enterprise, Android
+    - C++: Systems, Games
+    - C#: Windows, Unity
+    - Go: Cloud, Systems
+    - Rust: Systems, WebAssembly
+    - Ruby: Web, Scripting
+    - PHP: Web Development
+    - Swift: iOS, macOS
+    - Kotlin: Android, JVM
     """
     try:
-        # Auto-detect language if not specified
-        if not request.language:
-            request.language = jarvis.code_helper.detect_language(request.code)
+        result = jarvis.analyze_code(
+            code=request.code,
+            language=request.language,
+            analysis_type=request.analysis_type
+        )
+        
+        if not result["success"]:
+            raise HTTPException(status_code=400, detail=result["error"])
             
-        # Get analysis based on type
-        if request.analysis_type == "syntax":
-            analysis = jarvis.code_helper.analyze_syntax(request.code, request.language)
-        elif request.analysis_type == "suggestions":
-            analysis = jarvis.code_helper.get_suggestions(request.code, request.language)
-        else:
-            analysis = jarvis.code_helper.analyze_code(request.code, request.language)
-            
-        if analysis:
-            return {
-                "success": True,
-                "language": request.language,
-                "analysis": analysis
-            }
-        else:
-            raise HTTPException(status_code=400, detail="Could not analyze code")
+        return result
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

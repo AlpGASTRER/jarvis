@@ -164,6 +164,55 @@ class TestClient:
         except Exception as e:
             print(f"Error: {str(e)}")
 
+    def test_code_analysis(self, code: str, language: str = None, analysis_type: str = "full"):
+        """Test code analysis endpoint with different languages"""
+        try:
+            print(f"\nTesting code analysis for {language if language else 'auto-detected'} code...")
+            
+            # Prepare request data
+            data = {
+                "code": code,
+                "analysis_type": analysis_type
+            }
+            if language:
+                data["language"] = language
+                
+            # Send request
+            response = requests.post(
+                f"{self.base_url}/code/analyze",
+                json=data,
+                headers={"Content-Type": "application/json"}
+            )
+            
+            if response.status_code == 200:
+                result = response.json()
+                print("\nAnalysis Results:")
+                print(f"Language: {result['language']}")
+                print(f"Complexity Score: {result.get('complexity_score', 'N/A')}")
+                
+                if result.get('suggestions'):
+                    print("\nSuggestions:")
+                    for suggestion in result['suggestions']:
+                        print(f"- {suggestion}")
+                        
+                if result.get('best_practices'):
+                    print("\nBest Practices:")
+                    for practice in result['best_practices']:
+                        print(f"- {practice}")
+                        
+                if result.get('security_issues'):
+                    print("\nSecurity Issues:")
+                    for issue in result['security_issues']:
+                        print(f"- {issue}")
+                        
+                print("\nFull Analysis:")
+                print(json.dumps(result['analysis'], indent=2))
+            else:
+                print(f"\nError: {response.text}\n")
+                
+        except Exception as e:
+            print(f"\nError: {str(e)}\n")
+
 def main():
     """Main function"""
     print("\nJarvis Voice API Test Client")
@@ -172,22 +221,119 @@ def main():
     client = TestClient()
     
     while True:
-        print("Options:")
-        print("1. Test POST /voice endpoint")
-        print("2. Test WebSocket endpoint")
-        print("3. Test TTS endpoint")
-        print("4. Exit\n")
+        print("\nTest Options:")
+        print("1. Test Voice Recognition")
+        print("2. Test Text Processing")
+        print("3. Test Code Analysis")
+        print("4. Test WebSocket")
+        print("5. Exit")
         
-        choice = input("Enter your choice (1-4): ")
-        if choice == "4":
-            break
-            
+        choice = input("\nEnter your choice (1-5): ")
+        
         if choice == "1":
             client.test_voice_endpoint()
         elif choice == "2":
-            client.test_websocket_endpoint()
+            text = input("Enter text to process: ")
+            client.test_text_endpoint(text)
         elif choice == "3":
-            client.test_tts_endpoint()
+            print("\nSelect a test case:")
+            print("1. Python binary search")
+            print("2. JavaScript async function")
+            print("3. Rust struct implementation")
+            print("4. Go HTTP server")
+            print("5. Custom code")
+            
+            test_choice = input("\nEnter test case (1-5): ")
+            
+            if test_choice == "1":
+                code = """
+def binary_search(arr, target):
+    left, right = 0, len(arr) - 1
+    while left <= right:
+        mid = (left + right) // 2
+        if arr[mid] == target:
+            return mid
+        elif arr[mid] < target:
+            left = mid + 1
+        else:
+            right = mid - 1
+    return -1
+"""
+                client.test_code_analysis(code, "python")
+                
+            elif test_choice == "2":
+                code = """
+async function fetchData() {
+    try {
+        const response = await fetch('https://api.example.com/data');
+        const data = await response.json();
+        return data;
+    } catch (error) {
+        console.error('Error:', error);
+    }
+}
+"""
+                client.test_code_analysis(code, "javascript")
+                
+            elif test_choice == "3":
+                code = """
+struct User {
+    username: String,
+    email: String,
+    active: bool,
+}
+
+impl User {
+    fn new(username: String, email: String) -> User {
+        User {
+            username,
+            email,
+            active: true,
+        }
+    }
+}
+"""
+                client.test_code_analysis(code, "rust")
+                
+            elif test_choice == "4":
+                code = """
+package main
+
+import (
+    "fmt"
+    "net/http"
+)
+
+func handler(w http.ResponseWriter, r *http.Request) {
+    fmt.Fprintf(w, "Hello, World!")
+}
+
+func main() {
+    http.HandleFunc("/", handler)
+    http.ListenAndServe(":8080", nil)
+}
+"""
+                client.test_code_analysis(code, "go")
+                
+            elif test_choice == "5":
+                code = input("Enter your code: ")
+                language = input("Enter language (or press Enter for auto-detection): ")
+                analysis_type = input("Enter analysis type (full/syntax/suggestions/security) [default: full]: ")
+                
+                if not language.strip():
+                    language = None
+                if not analysis_type.strip():
+                    analysis_type = "full"
+                    
+                client.test_code_analysis(code, language, analysis_type)
+                
+        elif choice == "4":
+            client.test_websocket_endpoint()
+        elif choice == "5":
+            print("\nExiting...")
+            break
+        else:
+            print("\nInvalid choice. Please try again.")
 
 if __name__ == "__main__":
     main()

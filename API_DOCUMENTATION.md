@@ -12,28 +12,34 @@ http://localhost:8000
 
 ## Authentication
 
-Currently uses API keys through environment variables:
+API key authentication is required for all endpoints except documentation:
+```http
+X-API-Key: your-api-key
+```
+
+Environment variables required:
 - `WIT_EN_KEY`: Wit.ai API key for voice recognition
 - `GOOGLE_API_KEY`: Google API key for Gemini AI
 
+## Rate Limiting
+
+- Default: 100 requests per minute per IP
+- WebSocket: 10 concurrent connections per IP
+- Voice endpoints: 50 requests per minute per IP
+
 ## Endpoints
 
-### Text Processing
+### Code Analysis
 
-#### POST `/text`
-Process text input and get AI response.
+#### POST `/code/analyze`
+Analyze code and provide suggestions.
 
 **Request Body:**
 ```json
 {
-    "text": "string",
-    "mode": "general | code | voice",
-    "return_audio": false,
-    "voice_settings": {
-        "rate": 175,
-        "volume": 1.0,
-        "voice": "string"
-    }
+    "code": "string",
+    "language": "python | javascript | typescript | java | cpp | csharp | go | rust | ruby | php | swift | kotlin",
+    "analysis_type": "full | syntax | suggestions | best_practices | security"
 }
 ```
 
@@ -41,12 +47,17 @@ Process text input and get AI response.
 ```json
 {
     "success": true,
-    "response": "string",
-    "audio_response": {
-        "audio_base64": "string",
-        "sample_rate": 22050,
-        "channels": 1
-    }
+    "language": "string",
+    "analysis": {
+        "syntax": "string",
+        "suggestions": ["string"],
+        "best_practices": ["string"],
+        "security": ["string"]
+    },
+    "suggestions": ["string"],
+    "best_practices": ["string"],
+    "security_issues": ["string"],
+    "complexity_score": 0.0
 }
 ```
 
@@ -81,54 +92,35 @@ Process voice input and get AI response.
 }
 ```
 
-### Code Analysis
+### Text Processing
 
-#### POST `/code/analyze`
-Analyze code and get suggestions.
+#### POST `/text`
+Process text input and get AI response.
 
 **Request Body:**
 ```json
 {
-    "code": "string",
-    "language": "python | javascript | java",
-    "analysis_type": "full | syntax | suggestions"
-}
-```
-
-**Response:**
-```json
-{
-    "success": true,
-    "language": "string",
-    "analysis": {
-        "complexity": "number",
-        "suggestions": ["string"],
-        "code_blocks": ["string"],
-        "references": ["string"]
+    "text": "string",
+    "mode": "general | code | voice",
+    "return_audio": false,
+    "voice_settings": {
+        "rate": 175,
+        "volume": 1.0,
+        "voice": "string"
     }
 }
 ```
 
-### Conversation Management
-
-#### POST `/conversation`
-Manage conversation state and history.
-
-**Request Body:**
-```json
-{
-    "action": "start | continue | clear",
-    "text": "string",
-    "conversation_id": "string"
-}
-```
-
 **Response:**
 ```json
 {
     "success": true,
-    "conversation_id": "string",
-    "response": "string"
+    "response": "string",
+    "audio_response": {
+        "audio_base64": "string",
+        "sample_rate": 22050,
+        "channels": 1
+    }
 }
 ```
 
@@ -199,107 +191,49 @@ or
     "data": "base64_string"
 }
 ```
-or
-```json
-{
-    "type": "error",
-    "error": "string"
-}
-```
 
 ## Error Handling
 
-All endpoints return appropriate HTTP status codes:
+All endpoints return standard HTTP status codes:
 - 200: Success
 - 400: Bad Request
+- 401: Unauthorized
+- 403: Forbidden
+- 429: Too Many Requests
 - 500: Internal Server Error
 
-Error responses include a detail message:
+Error response format:
 ```json
 {
-    "detail": "Error message"
+    "success": false,
+    "error": "string",
+    "detail": "string"
 }
 ```
 
-## Rate Limiting
+## Security
 
-Currently no rate limiting implemented. Consider adding in production.
+- All endpoints require API key authentication
+- Rate limiting per IP address
+- Input validation and sanitization
+- CORS protection
+- No sensitive information in error messages
+- Security analysis for code endpoints
 
-## CORS
+## Best Practices
 
-CORS is enabled for all origins (*). Update the settings in production.
+1. Always set appropriate headers:
+   - `Content-Type: application/json`
+   - `X-API-Key: your-api-key`
+
+2. Handle rate limiting with exponential backoff
+
+3. Implement proper error handling
+
+4. Use WebSocket for real-time voice interaction
+
+5. Consider caching frequently requested data
 
 ## Examples
 
-### Python Example
-```python
-import requests
-import base64
-import json
-
-# Text processing
-response = requests.post(
-    "http://localhost:8000/text",
-    json={
-        "text": "What is Python?",
-        "return_audio": True
-    }
-)
-
-# Voice processing
-with open("audio.wav", "rb") as f:
-    audio_base64 = base64.b64encode(f.read()).decode()
-    
-response = requests.post(
-    "http://localhost:8000/voice",
-    json={
-        "audio_base64": audio_base64,
-        "return_audio": True
-    }
-)
-
-# Code analysis
-response = requests.post(
-    "http://localhost:8000/code/analyze",
-    json={
-        "code": "def hello(): print('Hello')",
-        "language": "python"
-    }
-)
-```
-
-### JavaScript Example
-```javascript
-// WebSocket voice interaction
-const ws = new WebSocket('ws://localhost:8000/ws/voice');
-
-ws.onmessage = (event) => {
-    const data = JSON.parse(event.data);
-    if (data.type === 'text') {
-        console.log('Recognized:', data.recognized);
-        console.log('Response:', data.response);
-    } else if (data.type === 'audio') {
-        // Play audio
-        const audio = new Audio(`data:audio/wav;base64,${data.data}`);
-        audio.play();
-    }
-};
-
-// Send audio data
-ws.send(JSON.stringify({
-    audio: base64AudioData
-}));
-```
-
-## Testing
-
-Use the provided test client:
-```bash
-python test_voice_api.py
-```
-
-The test client supports:
-1. Testing voice recognition with TTS response
-2. Testing real-time conversation with streaming
-3. Testing direct text-to-speech conversion
-4. Testing code analysis
+See the `test_voice_api.py` file for complete examples of using all endpoints.

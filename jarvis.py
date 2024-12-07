@@ -127,29 +127,72 @@ class Jarvis:
         self.conversation_history.append({"role": "assistant", "content": response})
         return response
 
+    def analyze_code(self, code: str, language: str = None, analysis_type: str = "full") -> dict:
+        """Analyze code with specified parameters"""
+        try:
+            # Auto-detect language if not specified
+            if not language:
+                language = self.code_helper.detect_language(code)
+
+            # Initialize response
+            response = {
+                "success": True,
+                "language": language,
+                "analysis": {},
+                "suggestions": [],
+                "best_practices": [],
+                "security_issues": [],
+                "complexity_score": 0.0
+            }
+
+            # Perform requested analysis
+            if analysis_type in ["full", "syntax"]:
+                syntax_result = self.code_helper.analyze_syntax(code, language)
+                response["analysis"]["syntax"] = syntax_result.get("analysis", "")
+
+            if analysis_type in ["full", "suggestions"]:
+                suggestions = self.code_helper.get_suggestions(code, language)
+                response["suggestions"] = suggestions
+
+            if analysis_type in ["full", "best_practices"]:
+                practices = self.code_helper.get_best_practices(code, language)
+                response["best_practices"] = practices
+
+            if analysis_type in ["full", "security"]:
+                security_issues = self.code_helper.analyze_security(code, language)
+                response["security_issues"] = security_issues
+
+            # Calculate complexity
+            response["complexity_score"] = self.code_helper.calculate_complexity(code, language)
+
+            return response
+
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "language": language or "unknown"
+            }
+
     def handle_code_query(self, text):
         """Handle programming queries with enhanced analysis"""
-        # Get conversation context
-        context = self._get_recent_context()
+        # Extract code blocks if present
+        code_blocks = self._extract_code_blocks(text)
         
-        # Extract any code blocks from recent conversation
-        code_context = self._extract_code_blocks(context) if context else None
-        
-        # Get enhanced code help
-        return self.code_helper.get_code_help(text, code_context)
-
-    def _extract_code_blocks(self, context):
-        """Extract code blocks from conversation"""
-        if not context:
-            return None
-            
-        # Look for code blocks in markdown format
-        code_blocks = []
-        for line in context.split('\n'):
-            if '```' in line:
-                code_blocks.append(line.strip('`'))
-                
-        return '\n'.join(code_blocks) if code_blocks else None
+        if code_blocks:
+            # If code blocks found, analyze them
+            results = []
+            for code in code_blocks:
+                analysis = self.analyze_code(code)
+                if analysis["success"]:
+                    results.append(f"Analysis for code block:\n{analysis['analysis'].get('syntax', '')}")
+                    if analysis["suggestions"]:
+                        results.append("\nSuggestions:\n" + "\n".join(f"- {s}" for s in analysis["suggestions"]))
+            return "\n\n".join(results) if results else "I couldn't analyze the code properly."
+        else:
+            # If no code blocks, treat as a general programming question
+            context = self._get_recent_context()
+            return self.code_helper.get_code_help(text, context)
 
     def handle_general_query(self, text):
         """Handle general queries"""

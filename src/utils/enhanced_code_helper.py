@@ -38,7 +38,61 @@ class EnhancedCodeHelper:
                 'top_k': 40,
                 'max_output_tokens': 2048,
             },
+            'typescript': {
+                'temperature': 0.4,
+                'top_p': 0.9,
+                'top_k': 40,
+                'max_output_tokens': 2048,
+            },
             'java': {
+                'temperature': 0.3,
+                'top_p': 0.8,
+                'top_k': 40,
+                'max_output_tokens': 2048,
+            },
+            'cpp': {
+                'temperature': 0.3,
+                'top_p': 0.8,
+                'top_k': 40,
+                'max_output_tokens': 2048,
+            },
+            'csharp': {
+                'temperature': 0.3,
+                'top_p': 0.8,
+                'top_k': 40,
+                'max_output_tokens': 2048,
+            },
+            'go': {
+                'temperature': 0.3,
+                'top_p': 0.8,
+                'top_k': 40,
+                'max_output_tokens': 2048,
+            },
+            'rust': {
+                'temperature': 0.3,
+                'top_p': 0.8,
+                'top_k': 40,
+                'max_output_tokens': 2048,
+            },
+            'ruby': {
+                'temperature': 0.4,
+                'top_p': 0.9,
+                'top_k': 40,
+                'max_output_tokens': 2048,
+            },
+            'php': {
+                'temperature': 0.4,
+                'top_p': 0.9,
+                'top_k': 40,
+                'max_output_tokens': 2048,
+            },
+            'swift': {
+                'temperature': 0.3,
+                'top_p': 0.8,
+                'top_k': 40,
+                'max_output_tokens': 2048,
+            },
+            'kotlin': {
                 'temperature': 0.3,
                 'top_p': 0.8,
                 'top_k': 40,
@@ -65,11 +119,18 @@ class EnhancedCodeHelper:
         """Detect programming language from code snippet"""
         # Common language indicators
         indicators = {
-            'python': ['.py', 'def ', 'import ', 'class ', 'print(', 'async def', 'await'],
-            'javascript': ['.js', 'function', 'const ', 'let ', 'var ', '=>', 'async/await'],
-            'java': ['.java', 'public class', 'private ', 'protected ', 'System.out'],
-            'cpp': ['.cpp', '#include', 'std::', 'cout <<', 'namespace'],
-            'typescript': ['.ts', 'interface ', 'type ', 'enum ', 'implements'],
+            'python': ['.py', 'def ', 'import ', 'class ', 'print(', 'async def', 'await', '->'],
+            'javascript': ['.js', 'function', 'const ', 'let ', 'var ', '=>', 'async/await', 'console.log'],
+            'typescript': ['.ts', 'interface ', 'type ', 'enum ', 'implements', 'export', 'private', 'public'],
+            'java': ['.java', 'public class', 'private ', 'protected ', 'System.out', 'void ', 'extends'],
+            'cpp': ['.cpp', '#include', 'std::', 'cout <<', 'namespace', 'template<', 'vector<'],
+            'csharp': ['.cs', 'using System', 'namespace', 'public class', 'private ', 'protected', 'async Task'],
+            'go': ['.go', 'package ', 'func ', 'import (', 'fmt.', 'struct {', 'interface {'],
+            'rust': ['.rs', 'fn ', 'let mut', 'impl ', 'trait ', 'pub ', 'use std'],
+            'ruby': ['.rb', 'def ', 'class ', 'require ', 'module ', 'attr_', 'puts '],
+            'php': ['.php', '<?php', 'function ', 'class ', 'public function', 'namespace', '$'],
+            'swift': ['.swift', 'func ', 'var ', 'let ', 'class ', 'struct ', 'protocol '],
+            'kotlin': ['.kt', 'fun ', 'val ', 'var ', 'class ', 'data class', 'suspend ']
         }
         
         code = code.lower()
@@ -86,6 +147,8 @@ class EnhancedCodeHelper:
         try:
             if language == 'python':
                 return self._analyze_python(code)
+            elif language == 'rust':
+                return self._analyze_rust(code)
             # Add more language analyzers as needed
             
             return CodeAnalysis(
@@ -100,6 +163,36 @@ class EnhancedCodeHelper:
             print(f"Code analysis error: {str(e)}")
             return None
             
+    def analyze_syntax(self, code: str, language: str = None) -> Dict:
+        """Analyze code syntax for any supported language"""
+        if not language:
+            language = self.detect_language(code)
+
+        model = self.models.get(language, self.default_model)
+        prompt = f"""Analyze the following {language} code for syntax correctness and best practices:
+
+{code}
+
+Provide analysis in the following format:
+1. Syntax correctness
+2. Best practices
+3. Potential improvements
+4. Security considerations
+"""
+        try:
+            response = model.generate_content(prompt)
+            return {
+                'success': True,
+                'analysis': response.text,
+                'language': language
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'error': str(e),
+                'language': language
+            }
+
     def _analyze_python(self, code: str) -> CodeAnalysis:
         """Analyze Python code"""
         try:
@@ -127,6 +220,48 @@ class EnhancedCodeHelper:
             
         except Exception as e:
             print(f"Python analysis error: {str(e)}")
+            return None
+            
+    def _analyze_rust(self, code: str) -> CodeAnalysis:
+        """Analyze Rust code"""
+        try:
+            # Extract code blocks (functions, structs, impls)
+            code_blocks = re.findall(r'(fn|struct|impl|trait)\s+\w+[^{]*{[^}]*}', code)
+            
+            # Calculate complexity based on control flow and pattern matching
+            complexity = (
+                len(re.findall(r'\b(if|else|match|for|while|loop)\b', code)) +
+                len(re.findall(r'\b(fn|struct|impl|trait)\b', code)) * 0.5
+            )
+            
+            # Generate suggestions based on common Rust patterns
+            suggestions = []
+            if 'unwrap()' in code:
+                suggestions.append("Consider using proper error handling instead of unwrap()")
+            if not re.search(r'#\[derive\(', code):
+                suggestions.append("Consider using #[derive] for common traits")
+            if 'mut ' in code:
+                suggestions.append("Review mutable variables, consider if immutable alternatives are possible")
+            if not re.search(r'//|/\*', code):
+                suggestions.append("Add documentation comments for public items")
+            
+            # Find relevant documentation references
+            references = [
+                "https://doc.rust-lang.org/book/",
+                "https://doc.rust-lang.org/std/",
+                "https://rust-lang.github.io/api-guidelines/"
+            ]
+            
+            return CodeAnalysis(
+                language='rust',
+                complexity=complexity,
+                suggestions=suggestions,
+                code_blocks=code_blocks,
+                references=references
+            )
+            
+        except Exception as e:
+            print(f"Rust analysis error: {str(e)}")
             return None
             
     def _calculate_complexity(self, tree: ast.AST) -> float:
@@ -252,3 +387,143 @@ class EnhancedCodeHelper:
                     prompt.append(f"  • {ref}")
                     
         return "\n".join(prompt)
+
+    def get_suggestions(self, code: str, language: str = None) -> List[str]:
+        """Get code improvement suggestions"""
+        if not language:
+            language = self.detect_language(code)
+
+        model = self.models.get(language, self.default_model)
+        prompt = f"""Analyze the following {language} code and provide specific suggestions for improvement:
+
+{code}
+
+Focus on:
+1. Code organization
+2. Performance optimization
+3. Error handling
+4. Code readability
+5. Best practices
+"""
+        try:
+            response = model.generate_content(prompt)
+            suggestions = [s.strip() for s in response.text.split('\n') if s.strip()]
+            return suggestions
+        except Exception as e:
+            print(f"Error generating suggestions: {str(e)}")
+            return []
+
+    def get_best_practices(self, code: str, language: str = None) -> List[str]:
+        """Get language-specific best practices"""
+        if not language:
+            language = self.detect_language(code)
+
+        model = self.models.get(language, self.default_model)
+        prompt = f"""Review the following {language} code and list specific best practices that should be followed:
+
+{code}
+
+Focus on:
+1. Language-specific conventions
+2. Design patterns
+3. Documentation standards
+4. Testing considerations
+5. Maintainability
+"""
+        try:
+            response = model.generate_content(prompt)
+            practices = [p.strip() for p in response.text.split('\n') if p.strip()]
+            return practices
+        except Exception as e:
+            print(f"Error getting best practices: {str(e)}")
+            return []
+
+    def analyze_security(self, code: str, language: str = None) -> List[str]:
+        """Analyze code for security issues"""
+        if not language:
+            language = self.detect_language(code)
+
+        model = self.models.get(language, self.default_model)
+        prompt = f"""Analyze the following {language} code for potential security issues:
+
+{code}
+
+Focus on:
+1. Input validation
+2. Authentication/Authorization
+3. Data sanitization
+4. Common vulnerabilities
+5. Secure coding practices
+"""
+        try:
+            response = model.generate_content(prompt)
+            issues = [i.strip() for i in response.text.split('\n') if i.strip()]
+            return issues
+        except Exception as e:
+            print(f"Error analyzing security: {str(e)}")
+            return []
+
+    def calculate_complexity(self, code: str, language: str = None) -> float:
+        """Calculate code complexity score"""
+        if not language:
+            language = self.detect_language(code)
+
+        try:
+            if language == 'python':
+                return self._calculate_python_complexity(code)
+            elif language == 'rust':
+                return self._calculate_rust_complexity(code)
+            else:
+                # Generic complexity calculation for other languages
+                complexity = 0.0
+                
+                # Control flow complexity
+                complexity += len(re.findall(r'\b(if|else|for|while|switch|case|try|catch)\b', code)) * 0.5
+                
+                # Function/method complexity
+                complexity += len(re.findall(r'\b(function|def|fn|func|method)\b', code)) * 0.3
+                
+                # Class/struct complexity
+                complexity += len(re.findall(r'\b(class|struct|interface|trait|impl)\b', code)) * 0.4
+                
+                # Nesting complexity
+                complexity += len(re.findall(r'[{]\s*[^}]*[{]', code)) * 0.6
+                
+                return round(complexity, 2)
+                
+        except Exception as e:
+            print(f"Error calculating complexity: {str(e)}")
+            return 0.0
+
+    def _calculate_python_complexity(self, code: str) -> float:
+        """Calculate Python-specific complexity"""
+        try:
+            tree = ast.parse(code)
+            complexity = self._calculate_complexity(tree)
+            return round(complexity, 2)
+        except:
+            return 0.0
+
+    def _calculate_rust_complexity(self, code: str) -> float:
+        """Calculate Rust-specific complexity"""
+        try:
+            complexity = 0.0
+            
+            # Control flow complexity
+            complexity += len(re.findall(r'\b(if|else|match|for|while|loop)\b', code)) * 0.5
+            
+            # Function complexity
+            complexity += len(re.findall(r'\bfn\s+\w+', code)) * 0.3
+            
+            # Type complexity
+            complexity += len(re.findall(r'\b(struct|enum|trait|impl)\b', code)) * 0.4
+            
+            # Generic/lifetime complexity
+            complexity += len(re.findall(r'<[^>]+>', code)) * 0.3
+            
+            # Pattern matching complexity
+            complexity += len(re.findall(r'\bmatch\b[^{]*{([^}]*})*', code)) * 0.6
+            
+            return round(complexity, 2)
+        except:
+            return 0.0
