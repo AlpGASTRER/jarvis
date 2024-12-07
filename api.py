@@ -21,7 +21,7 @@ Dependencies:
 """
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, WebSocket, Query, Depends, Header, WebSocketDisconnect, File, Form, UploadFile
+from fastapi import FastAPI, HTTPException, WebSocket, Query, Depends, Header, WebSocketDisconnect, File, Form, UploadFile, Request, Response
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -33,6 +33,7 @@ import io
 import wave
 import base64
 from src.utils.enhanced_code_helper import EnhancedCodeHelper
+from src.utils.voice_processor import VoiceProcessor
 import os
 
 # Initialize core components
@@ -41,14 +42,7 @@ code_helper = EnhancedCodeHelper()
 # Initialize FastAPI with metadata
 app = FastAPI(
     title="Jarvis AI Assistant API",
-    description="""
-    Comprehensive API for Jarvis AI Assistant featuring:
-    - Voice Recognition with Wit.ai
-    - Text-to-Speech with customizable voices
-    - Code Analysis and Suggestions
-    - Natural Language Processing with Google's Gemini
-    - Real-time Conversation
-    """,
+    description="API for voice interaction with AI assistant",
     version="1.0.0"
 )
 
@@ -60,6 +54,36 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Initialize processors
+voice_processor = VoiceProcessor()
+code_helper = EnhancedCodeHelper()
+
+# WebSocket connection manager
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+        self._lock = asyncio.Lock()
+        
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        async with self._lock:
+            self.active_connections.append(websocket)
+    
+    async def disconnect(self, websocket: WebSocket):
+        async with self._lock:
+            if websocket in self.active_connections:
+                self.active_connections.remove(websocket)
+    
+    async def broadcast(self, message: str):
+        async with self._lock:
+            for connection in self.active_connections:
+                try:
+                    await connection.send_text(message)
+                except Exception:
+                    pass
+
+manager = ConnectionManager()
 
 # Request/Response Models
 class TextRequest(BaseModel):
@@ -439,7 +463,7 @@ async def text_to_speech(
 async def websocket_voice(websocket: WebSocket):
     """WebSocket endpoint for real-time voice interaction"""
     try:
-        await websocket.accept()
+        await manager.connect(websocket)
         print("WebSocket connection opened")
         
         # Initialize processors
@@ -536,6 +560,7 @@ async def websocket_voice(websocket: WebSocket):
                     
             except WebSocketDisconnect:
                 print("Client disconnected")
+                await manager.disconnect(websocket)
                 break
             except Exception as e:
                 print(f"Error processing message: {e}")

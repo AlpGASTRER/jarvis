@@ -56,7 +56,12 @@ class VoiceProcessor:
         self.tts_engine = pyttsx3.init()
         self.tts_engine.setProperty('rate', 175)  # Speed of speech
         self.tts_engine.setProperty('volume', 1.0)  # Volume (0.0 to 1.0)
-
+        
+        # Initialize caches
+        self.response_cache = {}  # Cache for AI responses
+        self.tts_cache = {}      # Cache for TTS audio
+        self.cache_size = 100    # Maximum cache entries
+        
         # Pre-warm the model with a dummy request
         try:
             self.model.generate_content("Hello")
@@ -240,35 +245,35 @@ class VoiceProcessor:
             return None
 
     def get_ai_response(self, text: str) -> str:
-        """
-        Get AI response for the recognized text.
-        
-        Args:
-            text: Recognized text to process
-            
-        Returns:
-            str: AI response
-        """
+        """Get AI response with caching."""
         try:
-            # Get response using pre-initialized model
+            # Check cache first
+            if text in self.response_cache:
+                return self.response_cache[text]
+            
+            # Generate new response
             response = self.model.generate_content(text)
-            return response.text
+            result = response.text
+            
+            # Update cache (with size limit)
+            if len(self.response_cache) >= self.cache_size:
+                # Remove oldest entry
+                self.response_cache.pop(next(iter(self.response_cache)))
+            self.response_cache[text] = result
+            
+            return result
             
         except Exception as e:
             print(f"Error getting AI response: {e}")
             return "I apologize, but I couldn't process your request at the moment."
 
     def text_to_speech(self, text: str) -> bytes:
-        """
-        Convert text to speech using pyttsx3.
-        
-        Args:
-            text: Text to convert to speech
-            
-        Returns:
-            bytes: WAV audio data, or None if conversion fails
-        """
+        """Convert text to speech with caching."""
         try:
+            # Check cache first
+            if text in self.tts_cache:
+                return self.tts_cache[text]
+            
             import io
             import wave
             
@@ -286,6 +291,12 @@ class VoiceProcessor:
             # Clean up
             import os
             os.remove('temp.wav')
+            
+            # Update cache (with size limit)
+            if len(self.tts_cache) >= self.cache_size:
+                # Remove oldest entry
+                self.tts_cache.pop(next(iter(self.tts_cache)))
+            self.tts_cache[text] = audio_data
             
             return audio_data
             
