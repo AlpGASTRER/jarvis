@@ -18,8 +18,8 @@ X-API-Key: your-api-key
 ```
 
 Environment variables required:
-- `WIT_EN_KEY`: Wit.ai API key for voice recognition
-- `GOOGLE_API_KEY`: Google API key for Gemini AI
+- `GOOGLE_API_KEY`: Google API key for Gemini AI (Required)
+- `WIT_EN_KEY`: Wit.ai API key for voice recognition (Optional, for voice features)
 
 ## Rate Limiting
 
@@ -32,39 +32,77 @@ Environment variables required:
 ### Code Analysis
 
 #### POST `/code/analyze`
-Analyze code and provide suggestions.
+Analyze code and provide suggestions, best practices, and security analysis.
+
+**Features:**
+- Automatic language detection
+- Multiple analysis types
+- Complexity metrics
+- Security vulnerability scanning
+- Best practices recommendations
 
 **Request Body:**
 ```json
 {
     "code": "string",
-    "language": "python | javascript | typescript | java | cpp | csharp | go | rust | ruby | php | swift | kotlin",
-    "analysis_type": "full | syntax | suggestions | best_practices | security"
+    "language": "python | javascript | typescript | java | cpp | csharp | go | rust | ruby | php | swift | kotlin | null",
+    "analysis_type": "full | syntax | suggestions | best_practices | security",
+    "config_path": "string | null"
 }
 ```
 
-**Response:**
+**Example Request:**
+```bash
+curl -X POST "http://localhost:8000/code/analyze" \
+     -H "Content-Type: application/json" \
+     -d '{
+         "code": "def factorial(n):\n    if n <= 1:\n        return 1\n    return n * factorial(n-1)",
+         "analysis_type": "full"
+     }'
+```
+
+**Example Response:**
 ```json
 {
     "success": true,
-    "language": "string",
+    "language": "python",
     "analysis": {
-        "syntax": "string",
-        "suggestions": ["string"],
-        "best_practices": ["string"],
-        "security": ["string"]
+        "code_blocks": [
+            "def factorial(n):\n    if n <= 1:\n        return 1\n    return n * factorial(n-1)"
+        ],
+        "references": []
     },
-    "suggestions": ["string"],
-    "best_practices": ["string"],
-    "security_issues": ["string"],
-    "complexity_score": 0.0
+    "suggestions": [
+        "Add input validation for negative numbers",
+        "Consider using iteration instead of recursion for better performance",
+        "Add type hints for better code documentation"
+    ],
+    "best_practices": [
+        "Follow PEP 8 style guide",
+        "Add docstring to document function purpose and parameters",
+        "Consider adding error handling"
+    ],
+    "security_issues": [
+        "Add input validation to prevent stack overflow",
+        "Consider adding maximum recursion depth"
+    ],
+    "complexity_score": 3,
+    "metrics": {
+        "total_lines": 4,
+        "non_empty_lines": 4,
+        "average_line_length": 15.5,
+        "num_functions": 1,
+        "num_classes": 0,
+        "num_imports": 0,
+        "cyclomatic_complexity": 2
+    }
 }
 ```
 
 ### Voice Processing
 
 #### POST `/voice`
-Process voice input and get AI response.
+Process voice input and get AI response with optional text-to-speech.
 
 **Request Body:**
 ```json
@@ -77,25 +115,18 @@ Process voice input and get AI response.
 }
 ```
 
-**Response:**
-```json
-{
-    "success": true,
-    "recognized_text": "string",
-    "response": "string",
-    "audio_used": "original | enhanced",
-    "audio_response": {
-        "audio_base64": "string",
-        "sample_rate": 22050,
-        "channels": 1
-    }
-}
+**Example using curl with a WAV file:**
+```bash
+curl -X POST "http://localhost:8000/voice" \
+     -H "Content-Type: multipart/form-data" \
+     -F "audio_file=@recording.wav" \
+     -F "enhance_audio=true"
 ```
 
 ### Text Processing
 
 #### POST `/text`
-Process text input and get AI response.
+Process text input and get AI response with optional code analysis.
 
 **Request Body:**
 ```json
@@ -111,129 +142,107 @@ Process text input and get AI response.
 }
 ```
 
-**Response:**
-```json
-{
-    "success": true,
-    "response": "string",
-    "audio_response": {
-        "audio_base64": "string",
-        "sample_rate": 22050,
-        "channels": 1
-    }
-}
+**Example Request:**
+```bash
+curl -X POST "http://localhost:8000/text" \
+     -H "Content-Type: application/json" \
+     -d '{
+         "text": "What is the time complexity of quicksort?",
+         "mode": "code",
+         "return_audio": true
+     }'
 ```
 
 ### Text-to-Speech
 
 #### GET `/tts`
-Convert text to speech and stream audio.
+Convert text to speech with customizable voice settings.
 
 **Query Parameters:**
 - `text` (required): Text to convert
-- `voice`: Voice name to use
-- `rate`: Speech rate (WPM)
-- `volume`: Volume level (0.0-1.0)
+- `voice`: Voice name (default: system default)
+- `rate`: Speech rate in WPM (default: 175)
+- `volume`: Volume level 0.0-1.0 (default: 1.0)
 
-**Response:**
-- Content-Type: audio/wav
-- Streaming audio data
-
-#### GET `/voices`
-List available TTS voices.
-
-**Response:**
-```json
-{
-    "success": true,
-    "voices": [
-        {
-            "name": "string",
-            "id": "string",
-            "gender": "string"
-        }
-    ]
-}
+**Example Request:**
+```bash
+curl "http://localhost:8000/tts?text=Hello%20World&voice=en-US-1&rate=200" \
+     --output speech.wav
 ```
 
 ### WebSocket
 
 #### WS `/ws/voice`
-Real-time voice interaction.
+Real-time voice interaction with streaming responses.
 
-**Query Parameters:**
-- `return_audio`: Whether to return audio responses (default: true)
-- `sample_rate`: Audio sample rate in Hz (default: 16000)
-- `channels`: Number of audio channels (default: 1)
-- `enhance_audio`: Whether to apply noise reduction (default: true)
+**Connection Example (JavaScript):**
+```javascript
+const ws = new WebSocket('ws://localhost:8000/ws/voice?return_audio=true');
 
-**WebSocket Messages:**
+ws.onmessage = (event) => {
+    const response = JSON.parse(event.data);
+    if (response.type === 'text') {
+        console.log('Recognized:', response.recognized);
+        console.log('Response:', response.response);
+    } else if (response.type === 'audio') {
+        // Handle audio response
+        const audio = new Audio(`data:audio/wav;base64,${response.data}`);
+        audio.play();
+    }
+};
 
-Client to Server:
-```json
-{
-    "audio": "base64_string"
-}
-```
-
-Server to Client:
-```json
-{
-    "type": "text",
-    "recognized": "string",
-    "response": "string"
-}
-```
-or
-```json
-{
-    "type": "audio",
-    "data": "base64_string"
-}
+// Send audio data
+ws.send(JSON.stringify({
+    audio: base64AudioData
+}));
 ```
 
 ## Error Handling
 
-All endpoints return standard HTTP status codes:
-- 200: Success
-- 400: Bad Request
-- 401: Unauthorized
-- 403: Forbidden
-- 429: Too Many Requests
-- 500: Internal Server Error
+All endpoints return standard HTTP status codes with detailed error messages:
 
-Error response format:
 ```json
 {
     "success": false,
-    "error": "string",
-    "detail": "string"
+    "error": "Detailed error message",
+    "error_code": "ERROR_CODE",
+    "details": {
+        "field": "Additional error details"
+    }
 }
 ```
 
-## Security
-
-- All endpoints require API key authentication
-- Rate limiting per IP address
-- Input validation and sanitization
-- CORS protection
-- No sensitive information in error messages
-- Security analysis for code endpoints
+Common status codes:
+- 200: Success
+- 400: Bad Request (invalid input)
+- 401: Unauthorized (missing/invalid API key)
+- 403: Forbidden (rate limit exceeded)
+- 422: Validation Error (invalid request body)
+- 500: Internal Server Error
 
 ## Best Practices
 
-1. Always set appropriate headers:
-   - `Content-Type: application/json`
-   - `X-API-Key: your-api-key`
+1. **Rate Limiting:**
+   - Implement client-side rate limiting
+   - Use exponential backoff for retries
 
-2. Handle rate limiting with exponential backoff
+2. **Error Handling:**
+   - Always check the `success` field in responses
+   - Handle network errors gracefully
+   - Implement proper retry logic
 
-3. Implement proper error handling
+3. **WebSocket Usage:**
+   - Implement reconnection logic
+   - Handle connection timeouts
+   - Process messages sequentially
 
-4. Use WebSocket for real-time voice interaction
+4. **Audio Processing:**
+   - Use recommended audio formats (WAV, 16-bit PCM)
+   - Follow sample rate guidelines (16kHz for voice)
+   - Keep audio chunks under 15 seconds
 
-5. Consider caching frequently requested data
+## Support
 
-## Examples
-
-See the `test_voice_api.py` file for complete examples of using all endpoints.
+For issues and feature requests, please contact:
+- Email: support@jarvis-ai.com
+- GitHub: https://github.com/jarvis-ai/issues

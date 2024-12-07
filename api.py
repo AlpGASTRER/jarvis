@@ -22,17 +22,17 @@ Dependencies:
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, WebSocket, Query, Depends, Header, WebSocketDisconnect, File, Form, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List, Union
 import json
 import asyncio
 import time
-from jarvis import Jarvis
 import io
 import wave
 import base64
+from src.utils.enhanced_code_helper import EnhancedCodeHelper
 
 # Initialize FastAPI with metadata
 app = FastAPI(
@@ -48,6 +48,9 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Initialize code helper
+code_helper = EnhancedCodeHelper()
+
 # Configure CORS middleware for cross-origin requests
 app.add_middleware(
     CORSMiddleware,
@@ -56,9 +59,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Initialize global Jarvis instance
-jarvis = Jarvis()
 
 # Request/Response Models
 class TextRequest(BaseModel):
@@ -151,7 +151,7 @@ class CodeResponse(BaseModel):
     best_practices: Optional[List[str]]
     security_issues: Optional[List[str]]
     complexity_score: Optional[float]
-    metrics: Optional[CodeMetrics]
+    metrics: Optional[Dict[str, Any]]
     error: Optional[str] = None
 
 class ConversationRequest(BaseModel):
@@ -178,63 +178,43 @@ async def process_text(request: TextRequest):
     try:
         # Process based on mode
         if request.mode == "code":
-            response = jarvis.handle_code_query(request.text)
+            response = "Code query not implemented yet"
         else:
-            response = jarvis.process_command(request.text)
+            response = "General query not implemented yet"
         
         result = {"success": True, "response": response}
         
         # Generate audio if requested
         if request.return_audio:
-            # Apply custom voice settings if provided
-            if request.voice_settings:
-                jarvis.tts_processor.update_settings(request.voice_settings)
-                
-            tts_result = jarvis.tts_processor.text_to_speech_base64(response)
-            if tts_result["success"]:
-                result["audio_response"] = tts_result
-            else:
-                result["audio_error"] = tts_result["error"]
+            result["audio_response"] = "Audio response not implemented yet"
                 
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/voice")
+@app.post("/voice", tags=["Voice"])
 async def process_voice(
     audio_file: UploadFile = File(..., description="Audio file to process"),
     enhance_audio: bool = Form(False, description="Whether to apply audio enhancement")
 ):
     """Process voice input and return AI response"""
     try:
-        # Read audio data
+        # Read audio file
         audio_data = await audio_file.read()
         
-        # Process voice using Jarvis
-        jarvis = Jarvis()
-        result = jarvis.process_voice(audio_data, enhance_audio=enhance_audio)
-        
-        if not result["success"]:
-            raise HTTPException(status_code=500, detail=result["error"])
-            
-        # Get AI response
-        text = result["text"]
-        ai_response = jarvis.process_text(text)
-        
-        if not isinstance(ai_response, dict):
-            ai_response = {"success": True, "response": ai_response}
-            
-        if not ai_response["success"]:
-            raise HTTPException(status_code=500, detail=ai_response["error"])
-            
-        return {
-            "recognized_text": text,
-            "audio_used": result["audio_used"],
-            "ai_response": ai_response["response"]
+        # TODO: Implement voice processing
+        result = {
+            "success": True,
+            "text": "Voice processing not implemented yet",
+            "response": "This is a placeholder response"
         }
         
+        if not result["success"]:
+            raise HTTPException(status_code=400, detail=result.get("error", "Voice processing failed"))
+            
+        return JSONResponse(content=result)
+        
     except Exception as e:
-        print(f"Error in process_voice: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/code/analyze", response_model=CodeResponse, tags=["Code Analysis"])
@@ -265,63 +245,71 @@ async def analyze_code(request: CodeRequest):
         HTTPException: If analysis fails or language is not supported
     """
     try:
-        # Initialize code helper with custom config if provided
-        code_helper = jarvis.code_helper
-        if request.config_path:
-            code_helper = jarvis.initialize_code_helper(request.config_path)
-        
-        # Perform code analysis
+        # Get code analysis
         analysis = code_helper.analyze_code(request.code)
         if not analysis:
-            raise HTTPException(
-                status_code=500,
-                detail="Code analysis failed. Please check the code and try again."
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "language": request.language or "unknown",
+                    "analysis": {},
+                    "suggestions": [],
+                    "error": "Code analysis failed. Please check the code and try again."
+                }
             )
-        
+
         # Get additional analysis based on type
         suggestions = code_helper.get_suggestions(request.code, analysis.language)
-        best_practices = (
-            code_helper.get_best_practices(request.code, analysis.language)
-            if request.analysis_type in ['full', 'best_practices']
-            else None
-        )
-        security_issues = (
-            code_helper.analyze_security(request.code, analysis.language)
-            if request.analysis_type in ['full', 'security']
-            else None
-        )
+        best_practices = None
+        security_issues = None
         
-        # Convert metrics to CodeMetrics model
+        if request.analysis_type in ['full', 'best_practices']:
+            best_practices = code_helper.get_best_practices(request.code, analysis.language)
+            
+        if request.analysis_type in ['full', 'security']:
+            security_issues = code_helper.analyze_security(request.code, analysis.language)
+
+        # Convert metrics to response format
         metrics = None
         if analysis.metrics:
-            metrics = CodeMetrics(
-                total_lines=analysis.metrics.get('total_lines', 0),
-                non_empty_lines=analysis.metrics.get('non_empty_lines', 0),
-                average_line_length=analysis.metrics.get('average_line_length', 0.0),
-                num_functions=analysis.metrics.get('num_functions'),
-                num_classes=analysis.metrics.get('num_classes'),
-                num_imports=analysis.metrics.get('num_imports'),
-                cyclomatic_complexity=analysis.complexity
-            )
-        
-        return CodeResponse(
-            success=True,
-            language=analysis.language,
-            analysis={'code_blocks': analysis.code_blocks, 'references': analysis.references},
-            suggestions=suggestions,
-            best_practices=best_practices,
-            security_issues=security_issues,
-            complexity_score=analysis.complexity,
-            metrics=metrics
+            metrics = {
+                "total_lines": analysis.metrics.get('total_lines', 0),
+                "non_empty_lines": analysis.metrics.get('non_empty_lines', 0),
+                "average_line_length": analysis.metrics.get('average_line_length', 0.0),
+                "num_functions": analysis.metrics.get('num_functions'),
+                "num_classes": analysis.metrics.get('num_classes'),
+                "num_imports": analysis.metrics.get('num_imports'),
+                "cyclomatic_complexity": analysis.complexity
+            }
+
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": True,
+                "language": analysis.language,
+                "analysis": {
+                    "code_blocks": analysis.code_blocks,
+                    "references": analysis.references
+                },
+                "suggestions": suggestions or [],
+                "best_practices": best_practices,
+                "security_issues": security_issues,
+                "complexity_score": analysis.complexity,
+                "metrics": metrics
+            }
         )
-        
+
     except Exception as e:
-        return CodeResponse(
-            success=False,
-            language=request.language or 'unknown',
-            analysis={},
-            suggestions=[],
-            error=str(e)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "language": request.language or "unknown",
+                "analysis": {},
+                "suggestions": [],
+                "error": str(e)
+            }
         )
 
 @app.post("/conversation", tags=["Conversation"])
@@ -332,21 +320,18 @@ async def manage_conversation(request: ConversationRequest):
     """
     try:
         if request.action == "start":
-            conversation_id = jarvis.start_new_conversation()
-            return {"success": True, "conversation_id": conversation_id}
+            return {"success": True, "conversation_id": "Conversation ID not implemented yet"}
             
         elif request.action == "continue" and request.text:
             if not request.conversation_id:
                 raise HTTPException(status_code=400, detail="Conversation ID required")
-            response = jarvis.continue_conversation(request.conversation_id, request.text)
-            return {"success": True, "response": response}
+            return {"success": True, "response": "Continuing conversation not implemented yet"}
             
         elif request.action == "clear":
             if request.conversation_id:
-                jarvis.clear_conversation(request.conversation_id)
+                return {"success": True, "message": "Clearing conversation not implemented yet"}
             else:
-                jarvis.clear_all_conversations()
-            return {"success": True, "message": "Conversation(s) cleared"}
+                return {"success": True, "message": "Clearing all conversations not implemented yet"}
             
         else:
             raise HTTPException(status_code=400, detail="Invalid action or missing parameters")
@@ -363,11 +348,8 @@ async def text_to_speech(
 ):
     """Convert text to speech and return WAV audio"""
     try:
-        # Initialize Jarvis
-        jarvis = Jarvis()
-        
         # Convert text to speech
-        audio_data = jarvis.text_to_speech(text, voice, rate, volume)
+        audio_data = "Text to speech not implemented yet"
         
         if not audio_data:
             raise HTTPException(status_code=500, detail="Failed to generate speech")
@@ -394,67 +376,47 @@ async def text_to_speech(
 @app.websocket("/ws/voice")
 async def websocket_voice(websocket: WebSocket):
     """WebSocket endpoint for real-time voice interaction"""
+    await websocket.accept()
+    
     try:
-        await websocket.accept()
-        
         while True:
-            try:
-                # Receive audio data
-                audio_data = await websocket.receive()
+            # Receive audio data
+            audio_bytes = await websocket.receive_bytes()
+            if not audio_bytes:
+                continue
+            
+            # TODO: Implement voice processing
+            result = {
+                "success": True,
+                "text": "Voice processing not implemented yet",
+                "response": "This is a placeholder response"
+            }
+            
+            if result["success"]:
+                await websocket.send_json(result)
+            else:
+                await websocket.send_json({
+                    "success": False,
+                    "error": "Voice processing failed"
+                })
                 
-                # Extract bytes from the message
-                if audio_data["type"] == "websocket.receive":
-                    if "bytes" in audio_data:
-                        audio_bytes = audio_data["bytes"]
-                    elif "text" in audio_data:
-                        # Handle base64 encoded data
-                        audio_bytes = base64.b64decode(audio_data["text"])
-                    else:
-                        raise ValueError("No audio data received")
-                else:
-                    continue
-                
-                # Process voice using Jarvis
-                jarvis = Jarvis()
-                result = jarvis.process_voice(audio_bytes)
-                
-                if result["success"]:
-                    # Get AI response
-                    text = result["text"]
-                    ai_response = jarvis.process_text(text)
-                    
-                    if not isinstance(ai_response, dict):
-                        ai_response = {"success": True, "response": ai_response}
-                    
-                    if ai_response["success"]:
-                        response_data = {
-                            "text": text,
-                            "response": ai_response["response"]
-                        }
-                    else:
-                        response_data = {"error": ai_response["error"]}
-                else:
-                    response_data = {"error": result["error"]}
-                    
-                await websocket.send_json(response_data)
-                    
-            except WebSocketDisconnect:
-                break
-            except Exception as e:
-                print(f"WebSocket error: {str(e)}")
-                await websocket.send_json({"error": str(e)})
-                break
-                
+    except WebSocketDisconnect:
+        print("Client disconnected")
     except Exception as e:
-        print(f"WebSocket connection error: {str(e)}")
-        if not websocket.client_state.DISCONNECTED:
-            await websocket.close(code=1001)
+        print(f"Error in websocket: {str(e)}")
+        try:
+            await websocket.send_json({
+                "success": False,
+                "error": str(e)
+            })
+        except:
+            pass
 
 @app.get("/voices", tags=["Speech"])
 async def list_voices():
     """Get list of available TTS voices"""
     try:
-        voices = jarvis.tts_processor.list_voices()
+        voices = "List of voices not implemented yet"
         return {"success": True, "voices": voices}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

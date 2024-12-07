@@ -139,6 +139,72 @@ class PythonAnalyzer(LanguageAnalyzer):
             'lines_of_code': len(ast.unparse(tree).splitlines())
         }
 
+    def _generate_suggestions(self, tree: ast.AST) -> List[str]:
+        """Generate code improvement suggestions based on AST analysis."""
+        suggestions = []
+        
+        # Check for function and class documentation
+        for node in ast.walk(tree):
+            if isinstance(node, (ast.FunctionDef, ast.ClassDef)) and not ast.get_docstring(node):
+                suggestions.append(f"Add docstring to {node.__class__.__name__.lower()} '{node.name}'")
+        
+        # Check for type hints in function arguments
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                for arg in node.args.args:
+                    if arg.annotation is None and arg.arg != 'self':
+                        suggestions.append(f"Add type hint for argument '{arg.arg}' in function '{node.name}'")
+        
+        # Check for overly complex functions
+        for node in ast.walk(tree):
+            if isinstance(node, ast.FunctionDef):
+                complexity = self._calculate_function_complexity(node)
+                if complexity > 10:
+                    suggestions.append(f"Consider breaking down function '{node.name}' (complexity: {complexity})")
+        
+        return suggestions
+
+    def _calculate_function_complexity(self, node: ast.FunctionDef) -> int:
+        """Calculate complexity score for a single function."""
+        complexity = 1  # Base complexity
+        
+        for child in ast.walk(node):
+            if isinstance(child, (ast.If, ast.While, ast.For)):
+                complexity += 1
+            elif isinstance(child, ast.BoolOp):
+                complexity += len(child.values) - 1
+            elif isinstance(child, (ast.Try, ast.ExceptHandler)):
+                complexity += 1
+        
+        return complexity
+
+    def _extract_code_blocks(self, code: str) -> List[str]:
+        """Extract meaningful code blocks."""
+        blocks = []
+        try:
+            tree = ast.parse(code)
+            for node in ast.walk(tree):
+                if isinstance(node, (ast.FunctionDef, ast.ClassDef)):
+                    blocks.append(ast.unparse(node))
+        except Exception:
+            pass
+        return blocks
+
+    def _find_references(self, code: str) -> List[str]:
+        """Find relevant documentation references."""
+        references = []
+        try:
+            tree = ast.parse(code)
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for name in node.names:
+                        references.append(f"https://docs.python.org/3/library/{name.name}.html")
+                elif isinstance(node, ast.ImportFrom):
+                    references.append(f"https://docs.python.org/3/library/{node.module}.html")
+        except Exception:
+            pass
+        return references
+
 class EnhancedCodeHelper:
     """
     A class providing enhanced code analysis and assistance using Gemini AI.
@@ -296,28 +362,46 @@ class EnhancedCodeHelper:
     def _generic_analysis(self, code: str, language: str) -> CodeAnalysis:
         """Perform generic code analysis for unsupported languages."""
         try:
-            complexity = self._calculate_generic_complexity(code)
+            metrics = self._calculate_generic_metrics(code)
+            complexity = metrics.get('cyclomatic_complexity', 1.0)
             suggestions = self.get_suggestions(code, language)
+            code_blocks = self._extract_code_blocks(code)
+            references = self._find_references(code)
             
             return CodeAnalysis(
                 language=language,
                 complexity=complexity,
                 suggestions=suggestions,
-                code_blocks=self._extract_code_blocks(code),
-                references=[],
-                metrics=self._calculate_generic_metrics(code)
+                code_blocks=code_blocks,
+                references=references,
+                metrics=metrics
             )
         except Exception as e:
             raise AnalysisError(f"Generic analysis failed: {str(e)}")
     
     def _calculate_generic_metrics(self, code: str) -> Dict[str, Any]:
         """Calculate generic code metrics."""
-        lines = code.splitlines()
-        return {
+        lines = code.split('\n')
+        non_empty_lines = [line.strip() for line in lines if line.strip()]
+        
+        metrics = {
             'total_lines': len(lines),
-            'non_empty_lines': len([l for l in lines if l.strip()]),
-            'average_line_length': sum(len(l) for l in lines) / len(lines) if lines else 0
+            'non_empty_lines': len(non_empty_lines),
+            'average_line_length': sum(len(line) for line in non_empty_lines) / len(non_empty_lines) if non_empty_lines else 0,
+            'cyclomatic_complexity': 1.0  # Base complexity
         }
+        
+        # Basic complexity factors
+        complexity_indicators = [
+            'if ', 'else:', 'elif ', 'for ', 'while ', 'try:', 'catch ', 'switch',
+            'case ', 'break', 'continue', '?', '&&', '||', '==', '!=', '>=', '<='
+        ]
+        
+        # Add to complexity for each control flow indicator
+        for indicator in complexity_indicators:
+            metrics['cyclomatic_complexity'] += code.lower().count(indicator) * 0.1
+            
+        return metrics
 
     def analyze_syntax(self, code: str, language: str = None) -> Dict:
         """
