@@ -66,6 +66,39 @@ uvicorn api:app --reload
 - Environment variable based configuration
 - API key protection
 
+## Roadmap
+
+### Enhanced AI Capabilities
+- Conversation memory and context awareness
+- Specialized assistant modes (coding, teaching, etc.)
+- Multi-model support (Gemini, Claude, GPT-4)
+- Improved code understanding and generation
+
+### Advanced Code Features
+- Live code execution environment
+- Git integration for repository analysis
+- Multi-file project analysis
+- Code generation with templates
+- Auto-completion suggestions
+- Dependency analysis
+- Code refactoring suggestions
+
+### Voice Enhancements
+- Multiple voice options and personalities
+- Voice emotion detection
+- Advanced background noise cancellation
+- Speaker identification
+- Custom wake word ("Hey Jarvis")
+- Multi-language support
+
+### System Integration
+- Desktop application integration
+- IDE plugins (VS Code, PyCharm)
+- System commands execution
+- File system operations
+- Browser integration
+- Cross-platform support
+
 ## Contributing
 
 Feel free to open issues or submit pull requests for:
