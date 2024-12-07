@@ -194,13 +194,19 @@ class VoiceProcessor:
             str: Recognized text, or None if recognition failed
         """
         try:
+            # Get Wit.ai API key
+            wit_key = os.getenv('WIT_EN_KEY')
+            if not wit_key:
+                print("Wit.ai API key not found")
+                return None
+                
             # Convert audio data to AudioData format
             audio = self._convert_to_audio_data(audio_data, 16000, 1)
             
             # Use Wit.ai to recognize speech
             text = self.recognizer.recognize_wit(
                 audio,
-                key=os.getenv('WIT_EN_KEY')
+                key=wit_key
             )
             return text
             
@@ -208,7 +214,7 @@ class VoiceProcessor:
             print("Could not understand audio")
             return None
         except sr.RequestError as e:
-            print(f"Could not request results; {e}")
+            print(f"Could not request results from Wit.ai; {e}")
             return None
         except Exception as e:
             print(f"Error recognizing speech: {e}")

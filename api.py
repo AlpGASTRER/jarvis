@@ -440,6 +440,7 @@ async def websocket_voice(websocket: WebSocket):
     """WebSocket endpoint for real-time voice interaction"""
     try:
         await websocket.accept()
+        print("WebSocket connection opened")
         
         # Initialize processors
         from src.utils.voice_processor import VoiceProcessor
@@ -447,39 +448,92 @@ async def websocket_voice(websocket: WebSocket):
         
         while True:
             try:
-                # Receive audio data
-                data = await websocket.receive_json()
-                audio_data = base64.b64decode(data['audio'])
+                # Receive message
+                message = await websocket.receive_text()
                 
-                # Process audio
-                recognized_text = voice_processor.recognize_speech(audio_data)
+                # Parse JSON message
+                try:
+                    data = json.loads(message)
+                    if 'type' not in data:
+                        raise ValueError("Message type not specified")
+                except json.JSONDecodeError:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": "Invalid JSON message"
+                    })
+                    continue
                 
-                # Send recognition result
-                await websocket.send_json({
-                    "type": "text",
-                    "recognized": recognized_text or "Could not recognize speech",
-                    "response": None
-                })
+                # Handle different message types
+                if data['type'] == 'audio':
+                    if 'audio' not in data:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Audio data not provided"
+                        })
+                        continue
+                        
+                    # Process audio
+                    audio_data = base64.b64decode(data['audio'])
+                    recognized_text = voice_processor.recognize_speech(audio_data)
+                    
+                    # Send recognition result
+                    await websocket.send_json({
+                        "type": "recognition",
+                        "success": recognized_text is not None,
+                        "text": recognized_text or "Could not recognize speech"
+                    })
+                    
+                    if recognized_text:
+                        # Get AI response
+                        response = voice_processor.get_ai_response(recognized_text)
+                        
+                        # Send text response
+                        await websocket.send_json({
+                            "type": "response",
+                            "text": response
+                        })
+                        
+                        # Generate and send audio response if needed
+                        if data.get('return_audio', False):
+                            audio_data = voice_processor.text_to_speech(response)
+                            if audio_data:
+                                await websocket.send_json({
+                                    "type": "audio",
+                                    "data": base64.b64encode(audio_data).decode()
+                                })
                 
-                if recognized_text:
-                    # Get AI response
-                    response = voice_processor.get_ai_response(recognized_text)
+                elif data['type'] == 'text':
+                    if 'text' not in data:
+                        await websocket.send_json({
+                            "type": "error",
+                            "message": "Text not provided"
+                        })
+                        continue
+                        
+                    # Get AI response for text
+                    response = voice_processor.get_ai_response(data['text'])
                     
                     # Send text response
                     await websocket.send_json({
-                        "type": "text",
-                        "recognized": recognized_text,
-                        "response": response
+                        "type": "response",
+                        "text": response
                     })
                     
-                    # Generate and send audio response
-                    audio_data = voice_processor.text_to_speech(response)
-                    if audio_data:
-                        await websocket.send_json({
-                            "type": "audio",
-                            "data": base64.b64encode(audio_data).decode()
-                        })
-                        
+                    # Generate and send audio response if needed
+                    if data.get('return_audio', False):
+                        audio_data = voice_processor.text_to_speech(response)
+                        if audio_data:
+                            await websocket.send_json({
+                                "type": "audio",
+                                "data": base64.b64encode(audio_data).decode()
+                            })
+                
+                else:
+                    await websocket.send_json({
+                        "type": "error",
+                        "message": f"Unknown message type: {data['type']}"
+                    })
+                    
             except WebSocketDisconnect:
                 print("Client disconnected")
                 break

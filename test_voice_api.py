@@ -58,18 +58,46 @@ class TestClient:
         print("\n* Recording...")
         print("Press and hold SPACE to record, release to stop")
         
-        r = sr.Recognizer()
-        with sr.Microphone(sample_rate=RATE) as source:
-            # Wait for SPACE key press
-            keyboard.wait('space', suppress=True)
-            print("Recording started...")
-            
-            # Record until SPACE is released
-            audio = r.listen(source)
-            print("Recording stopped\n")
-            
-            # Get raw audio data
-            return audio.get_wav_data()
+        try:
+            r = sr.Recognizer()
+            with sr.Microphone(sample_rate=RATE) as source:
+                # Adjust for ambient noise
+                print("Adjusting for ambient noise...")
+                r.adjust_for_ambient_noise(source, duration=1)
+                
+                # Wait for SPACE key press
+                print("Ready! Press and hold SPACE to record")
+                keyboard.wait('space', suppress=True)
+                print("Recording started...")
+                
+                # Start recording
+                audio = None
+                try:
+                    # Record until SPACE is released
+                    while keyboard.is_pressed('space'):
+                        audio = r.listen(source, timeout=1, phrase_time_limit=None)
+                        if audio:
+                            break
+                    
+                    print("Recording stopped\n")
+                    
+                    # Get raw audio data if we have it
+                    if audio:
+                        return audio.get_wav_data()
+                    else:
+                        print("No audio data captured")
+                        return None
+                        
+                except sr.WaitTimeoutError:
+                    print("Recording timed out")
+                    return None
+                except Exception as e:
+                    print(f"Error during recording: {e}")
+                    return None
+                    
+        except Exception as e:
+            print(f"Error initializing audio: {e}")
+            return None
 
     def test_voice_endpoint(self):
         """Test POST /voice endpoint"""
@@ -136,27 +164,65 @@ class TestClient:
         """Test the /ws/voice WebSocket endpoint"""
         print("Testing WebSocket endpoint...")
         
+        # Record audio first
+        audio_data = self.record_audio()
+        if audio_data is None:
+            print("Failed to record audio")
+            return
+            
         try:
-            # Record audio
-            audio_data = self.record_audio()
-            if not audio_data:
-                return
-                
             async def test_ws():
                 uri = f"{self.base_url.replace('http', 'ws')}/ws/voice"
-                async with websockets.connect(uri) as websocket:
-                    # Send raw audio bytes
-                    await websocket.send(audio_data)
-                    print("Sent audio data, waiting for response...")
+                try:
+                    async with websockets.connect(uri) as websocket:
+                        # Send audio data as JSON with proper format
+                        message = {
+                            "type": "audio",
+                            "audio": base64.b64encode(audio_data).decode(),
+                            "return_audio": True
+                        }
+                        await websocket.send(json.dumps(message))
+                        print("Sent audio data, waiting for response...")
+                        
+                        # Get recognition result
+                        response = await websocket.recv()
+                        result = json.loads(response)
+                        
+                        if result.get("type") == "recognition":
+                            print("\nRecognition Result:")
+                            print(f"Success: {result.get('success', False)}")
+                            print(f"Text: {result.get('text', 'N/A')}")
+                            
+                            # Get AI response if recognition was successful
+                            if result.get("success"):
+                                response = await websocket.recv()
+                                result = json.loads(response)
+                                
+                                if result.get("type") == "response":
+                                    print("\nAI Response:")
+                                    print(f"Text: {result.get('text', 'N/A')}")
+                                    
+                                    # Get audio response if available
+                                    response = await websocket.recv()
+                                    result = json.loads(response)
+                                    
+                                    if result.get("type") == "audio":
+                                        print("\nPlaying audio response...")
+                                        response_audio = base64.b64decode(result.get("data", ""))
+                                        player = AudioPlayer()
+                                        player.play_audio(response_audio)
+                                    
+                        elif result.get("type") == "error":
+                            print(f"\nError: {result.get('message', 'Unknown error')}")
+                            
+                except websockets.exceptions.WebSocketException as e:
+                    print(f"\nWebSocket error: {e}")
+                except json.JSONDecodeError as e:
+                    print(f"\nJSON decode error: {e}")
+                except Exception as e:
+                    print(f"\nUnexpected error: {e}")
                     
-                    # Get response
-                    response = await websocket.recv()
-                    result = json.loads(response)
-                    
-                    print("\nResponse:")
-                    print(f"Text: {result.get('text', 'N/A')}")
-                    print(f"Response: {result.get('response', 'N/A')}\n")
-                    
+            # Run the WebSocket test
             asyncio.get_event_loop().run_until_complete(test_ws())
             
         except Exception as e:
