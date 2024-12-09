@@ -254,7 +254,7 @@ class VoiceProcessor:
         """Create a new chat and return its ID."""
         import uuid
         chat_id = str(uuid.uuid4())
-        self.chats[chat_id] = self.model.start_chat(history=[])
+        self.chats[chat_id] = self.model.start_chat()
         return chat_id
         
     def get_chat(self, chat_id: str = None):
@@ -312,17 +312,23 @@ class VoiceProcessor:
             raise ValueError(f"Chat with ID {chat_id} does not exist")
             
         # Start a new chat with the same ID
-        self.chats[chat_id] = self.model.start_chat(history=[])
+        self.chats[chat_id] = self.model.start_chat()
         return chat_id
 
     def get_history(self, chat_id: str = None):
         """Get current chat history in a serializable format."""
-        chat = self.get_chat(chat_id)
+        if chat_id is None:
+            chat_id = self.active_chat_id
+            
+        if chat_id not in self.chats:
+            raise ValueError(f"Chat with ID {chat_id} does not exist")
+            
+        chat = self.chats[chat_id]
         history = []
-        for msg in chat.history:
+        for message in chat.history:
             history.append({
-                "role": "user" if msg.role == "user" else "assistant",
-                "text": msg.parts[0].text
+                "role": "user" if message.role == "user" else "assistant",
+                "text": message.parts[0].text
             })
         return history
         

@@ -10,6 +10,12 @@ A powerful AI assistant that combines voice interaction, code analysis, and natu
   - WebSocket-based audio streaming
   - Response caching for improved performance
 
+- **Multi-Chat Support**
+  - Multiple concurrent chat sessions
+  - Persistent chat history
+  - Context-aware conversations
+  - Session management (create, switch, clear)
+
 - **Code Analysis**
   - Semantic code understanding
   - Best practices recommendations
@@ -44,11 +50,54 @@ uvicorn api:app --reload
 - WebSocket: `ws://localhost:8000/ws`
 - HTTP API: `http://localhost:8000`
 
+## Chat API Usage
+
+The `/conversation` endpoint supports multiple chat actions:
+
+```python
+# Create a new chat
+POST /conversation
+{
+    "action": "new"
+}
+
+# Continue a conversation
+POST /conversation
+{
+    "action": "continue",
+    "chat_id": "your-chat-id",  # Optional, uses active chat if not provided
+    "text": "Your message here"
+}
+
+# Switch between chats
+POST /conversation
+{
+    "action": "switch",
+    "chat_id": "target-chat-id"
+}
+
+# Clear chat history
+POST /conversation
+{
+    "action": "clear",
+    "chat_id": "chat-id-to-clear"  # Optional, clears active chat if not provided
+}
+
+# List all active chats
+POST /conversation
+{
+    "action": "list"
+}
+```
+
+Each chat maintains its own conversation history, allowing for context-aware responses. When a chat becomes too long and hits the token limit, simply start a new chat or clear the current one.
+
 ## Architecture
 
 - FastAPI backend with WebSocket support
 - Local TTS engine for fast responses
 - Caching system for frequently used responses
+- Multi-chat session management
 - Modular design with separate processors for voice, code, and AI
 
 ## Performance Optimizations

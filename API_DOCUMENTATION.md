@@ -29,6 +29,116 @@ Environment variables required:
 
 ## Endpoints
 
+### Conversation Management
+
+#### POST `/conversation`
+Manage multiple chat sessions with context-aware responses.
+
+**Actions:**
+
+1. Create New Chat
+```json
+{
+    "action": "new"
+}
+```
+Response:
+```json
+{
+    "success": true,
+    "chat_id": "uuid-string",
+    "history": []
+}
+```
+
+2. Continue Conversation
+```json
+{
+    "action": "continue",
+    "chat_id": "uuid-string",  // Optional, uses active chat if not provided
+    "text": "Your message here"
+}
+```
+Response:
+```json
+{
+    "success": true,
+    "chat_id": "uuid-string",
+    "response": "AI response text",
+    "history": [
+        {
+            "role": "user",
+            "text": "message"
+        },
+        {
+            "role": "assistant",
+            "text": "response"
+        }
+    ]
+}
+```
+
+3. Switch Between Chats
+```json
+{
+    "action": "switch",
+    "chat_id": "uuid-string"
+}
+```
+Response:
+```json
+{
+    "success": true,
+    "message": "Switched to chat uuid-string",
+    "chat_id": "uuid-string",
+    "history": [...]
+}
+```
+
+4. Clear Chat History
+```json
+{
+    "action": "clear",
+    "chat_id": "uuid-string"  // Optional, clears active chat if not provided
+}
+```
+Response:
+```json
+{
+    "success": true,
+    "message": "Conversation history cleared",
+    "chat_id": "uuid-string",
+    "history": []
+}
+```
+
+5. List Active Chats
+```json
+{
+    "action": "list"
+}
+```
+Response:
+```json
+{
+    "success": true,
+    "chats": [
+        {
+            "id": "uuid-string",
+            "is_active": true,
+            "history": [...]
+        }
+    ]
+}
+```
+
+**Notes:**
+- Each chat maintains its own conversation history
+- The AI uses the entire chat history for context-aware responses
+- When a chat becomes too long and hits the token limit, start a new chat or clear the current one
+- Chat IDs are UUIDs and are generated server-side
+- The most recently used chat becomes the active chat
+
 ### Code Analysis
 
 #### POST `/code/analyze`
