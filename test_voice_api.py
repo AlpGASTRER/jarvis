@@ -160,6 +160,90 @@ class TestClient:
         except Exception as e:
             print(f"\nError: {str(e)}\n")
 
+    def test_conversation_endpoint(self, action: str, text: str = None, chat_id: str = None):
+        """Test POST /conversation endpoint"""
+        try:
+            print("\nTesting POST /conversation endpoint...")
+            
+            # Prepare request data
+            data = {
+                "action": action,
+                "text": text,
+                "chat_id": chat_id
+            }
+            
+            # Send request
+            response = requests.post(f"{self.base_url}/conversation", json=data)
+            
+            if response.status_code == 200:
+                result = response.json()
+                print("\nResponse:")
+                if result.get('chat_id'):
+                    print(f"Chat ID: {result['chat_id']}")
+                if result.get('response'):
+                    print(f"AI Response: {result['response']}")
+                if result.get('message'):
+                    print(f"Message: {result['message']}")
+                    
+                if action == "list":
+                    print("\nActive Chats:")
+                    for chat in result.get('chats', []):
+                        status = "(Active)" if chat['is_active'] else ""
+                        print(f"\nChat {chat['id']} {status}")
+                        print("History:")
+                        for msg in chat['history']:
+                            role = msg['role']
+                            text = msg['text']
+                            print(f"{Fore.GREEN if role == 'assistant' else Fore.BLUE}{role}: {text}{Style.RESET_ALL}")
+                else:
+                    print("\nConversation History:")
+                    for msg in result.get('history', []):
+                        role = msg['role']
+                        text = msg['text']
+                        print(f"{Fore.GREEN if role == 'assistant' else Fore.BLUE}{role}: {text}{Style.RESET_ALL}")
+            else:
+                print(f"\nError: {response.text}\n")
+                
+            return response.json()
+        except Exception as e:
+            print(f"\nError: {str(e)}\n")
+
+    async def test_websocket_conversation(self, websocket):
+        """Handle conversation in WebSocket connection"""
+        try:
+            # Get recognition result
+            response = await websocket.recv()
+            result = json.loads(response)
+            
+            if result.get("type") == "recognition":
+                print("\nRecognition Result:")
+                print(f"Success: {result.get('success', False)}")
+                print(f"Text: {result.get('text', 'N/A')}")
+                
+                # Get AI response if recognition was successful
+                if result.get("success"):
+                    response = await websocket.recv()
+                    result = json.loads(response)
+                    
+                    if result.get("type") == "response":
+                        print("\nAI Response:")
+                        print(f"Text: {result.get('text', 'N/A')}")
+                        print("\nConversation History:")
+                        for msg in result.get('history', []):
+                            role = msg['role']
+                            text = msg['text']
+                            print(f"{Fore.GREEN if role == 'assistant' else Fore.BLUE}{role}: {text}{Style.RESET_ALL}")
+                        
+                        # If audio response is present
+                        if result.get("audio"):
+                            print("\nPlaying audio response...")
+                            audio_data = base64.b64decode(result["audio"])
+                            player = AudioPlayer()
+                            player.play_audio(audio_data)
+                            
+        except Exception as e:
+            print(f"Error in WebSocket conversation: {e}")
+
     def test_websocket_endpoint(self):
         """Test the /ws/voice WebSocket endpoint"""
         print("Testing WebSocket endpoint...")
@@ -170,63 +254,21 @@ class TestClient:
             print("Failed to record audio")
             return
             
-        try:
-            async def test_ws():
-                uri = f"{self.base_url.replace('http', 'ws')}/ws/voice"
-                try:
-                    async with websockets.connect(uri) as websocket:
-                        # Send audio data as JSON with proper format
-                        message = {
-                            "type": "audio",
-                            "audio": base64.b64encode(audio_data).decode(),
-                            "return_audio": True
-                        }
-                        await websocket.send(json.dumps(message))
-                        print("Sent audio data, waiting for response...")
-                        
-                        # Get recognition result
-                        response = await websocket.recv()
-                        result = json.loads(response)
-                        
-                        if result.get("type") == "recognition":
-                            print("\nRecognition Result:")
-                            print(f"Success: {result.get('success', False)}")
-                            print(f"Text: {result.get('text', 'N/A')}")
-                            
-                            # Get AI response if recognition was successful
-                            if result.get("success"):
-                                response = await websocket.recv()
-                                result = json.loads(response)
-                                
-                                if result.get("type") == "response":
-                                    print("\nAI Response:")
-                                    print(f"Text: {result.get('text', 'N/A')}")
-                                    
-                                    # Get audio response if available
-                                    response = await websocket.recv()
-                                    result = json.loads(response)
-                                    
-                                    if result.get("type") == "audio":
-                                        print("\nPlaying audio response...")
-                                        response_audio = base64.b64decode(result.get("data", ""))
-                                        player = AudioPlayer()
-                                        player.play_audio(response_audio)
-                                    
-                        elif result.get("type") == "error":
-                            print(f"\nError: {result.get('message', 'Unknown error')}")
-                            
-                except websockets.exceptions.WebSocketException as e:
-                    print(f"\nWebSocket error: {e}")
-                except json.JSONDecodeError as e:
-                    print(f"\nJSON decode error: {e}")
-                except Exception as e:
-                    print(f"\nUnexpected error: {e}")
-                    
-            # Run the WebSocket test
-            asyncio.get_event_loop().run_until_complete(test_ws())
-            
-        except Exception as e:
-            print(f"\nError: {str(e)}\n")
+        async def test_ws():
+            uri = f"{self.base_url.replace('http', 'ws')}/ws/voice"
+            async with websockets.connect(uri) as websocket:
+                # Send audio data as JSON with proper format
+                message = {
+                    "type": "audio",
+                    "audio": base64.b64encode(audio_data).decode(),
+                    "return_audio": True
+                }
+                await websocket.send(json.dumps(message))
+                print("Sent audio data, waiting for response...")
+                
+                await self.test_websocket_conversation(websocket)
+                
+        asyncio.get_event_loop().run_until_complete(test_ws())
 
     def test_tts_endpoint(self, text="Hello, I am Jarvis. How can I help you today?"):
         """Test the /tts endpoint"""
@@ -312,126 +354,70 @@ class TestClient:
             print(f"\nError: {str(e)}\n")
 
 def main():
-    """Main function"""
-    print("\nJarvis Voice API Test Client")
-    print("=" * 50 + "\n")
-    
+    """Main function to run tests"""
     client = TestClient()
+    current_chat_id = None
     
     while True:
-        print("\nTest Options:")
+        print("\n=== Jarvis API Test Menu ===")
         print("1. Test Voice Recognition")
         print("2. Test Text Processing")
         print("3. Test Code Analysis")
         print("4. Test WebSocket")
-        print("5. Exit")
+        print("5. Test Conversation")
+        print("6. Exit")
         
-        choice = input("\nEnter your choice (1-5): ")
+        choice = input("\nEnter your choice (1-6): ")
         
         if choice == "1":
             client.test_voice_endpoint()
         elif choice == "2":
-            text = input("Enter text to process: ")
+            text = input("\nEnter text to process: ")
             client.test_text_endpoint(text)
         elif choice == "3":
-            print("\nSelect a test case:")
-            print("1. Python binary search")
-            print("2. JavaScript async function")
-            print("3. Rust struct implementation")
-            print("4. Go HTTP server")
-            print("5. Custom code")
-            
-            test_choice = input("\nEnter test case (1-5): ")
-            
-            if test_choice == "1":
-                code = """
-def binary_search(arr, target):
-    left, right = 0, len(arr) - 1
-    while left <= right:
-        mid = (left + right) // 2
-        if arr[mid] == target:
-            return mid
-        elif arr[mid] < target:
-            left = mid + 1
-        else:
-            right = mid - 1
-    return -1
-"""
-                client.test_code_analysis(code, "python")
-                
-            elif test_choice == "2":
-                code = """
-async function fetchData() {
-    try {
-        const response = await fetch('https://api.example.com/data');
-        const data = await response.json();
-        return data;
-    } catch (error) {
-        console.error('Error:', error);
-    }
-}
-"""
-                client.test_code_analysis(code, "javascript")
-                
-            elif test_choice == "3":
-                code = """
-struct User {
-    username: String,
-    email: String,
-    active: bool,
-}
-
-impl User {
-    fn new(username: String, email: String) -> User {
-        User {
-            username,
-            email,
-            active: true,
-        }
-    }
-}
-"""
-                client.test_code_analysis(code, "rust")
-                
-            elif test_choice == "4":
-                code = """
-package main
-
-import (
-    "fmt"
-    "net/http"
-)
-
-func handler(w http.ResponseWriter, r *http.Request) {
-    fmt.Fprintf(w, "Hello, World!")
-}
-
-func main() {
-    http.HandleFunc("/", handler)
-    http.ListenAndServe(":8080", nil)
-}
-"""
-                client.test_code_analysis(code, "go")
-                
-            elif test_choice == "5":
-                code = input("Enter your code: ")
-                language = input("Enter language (or press Enter for auto-detection): ")
-                analysis_type = input("Enter analysis type (full/syntax/suggestions/security) [default: full]: ")
-                
-                if not language.strip():
-                    language = None
-                if not analysis_type.strip():
-                    analysis_type = "full"
-                    
-                client.test_code_analysis(code, language, analysis_type)
-                
+            code = input("\nEnter code or question: ")
+            client.test_text_endpoint(code)
         elif choice == "4":
             client.test_websocket_endpoint()
         elif choice == "5":
+            while True:
+                print("\nConversation Test Menu:")
+                if current_chat_id:
+                    print(f"Current Chat: {current_chat_id}")
+                print("1. Start New Conversation")
+                print("2. Continue Conversation")
+                print("3. Clear History")
+                print("4. List Active Chats")
+                print("5. Switch Chat")
+                print("6. Back to Main Menu")
+                
+                sub_choice = input("\nEnter your choice (1-6): ")
+                
+                if sub_choice == "1":
+                    response = client.test_conversation_endpoint("start")
+                    if response and response.get('chat_id'):
+                        current_chat_id = response.get('chat_id')
+                elif sub_choice == "2":
+                    text = input("Enter your message: ")
+                    client.test_conversation_endpoint("continue", text, current_chat_id)
+                elif sub_choice == "3":
+                    client.test_conversation_endpoint("clear", chat_id=current_chat_id)
+                elif sub_choice == "4":
+                    client.test_conversation_endpoint("list")
+                elif sub_choice == "5":
+                    chat_id = input("Enter chat ID to switch to: ")
+                    response = client.test_conversation_endpoint("switch", chat_id=chat_id)
+                    if response and response.get('success'):
+                        current_chat_id = chat_id
+                elif sub_choice == "6":
+                    break
+                else:
+                    print("Invalid choice!")
+        elif choice == "6":
             print("\nExiting...")
             break
         else:
-            print("\nInvalid choice. Please try again.")
+            print("\nInvalid choice!")
 
 if __name__ == "__main__":
     main()

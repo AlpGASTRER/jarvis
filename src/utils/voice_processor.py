@@ -51,16 +51,22 @@ class VoiceProcessor:
         genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
         self.model = genai.GenerativeModel('gemini-pro')
         
+        # Initialize chat storage
+        self.chats = {}  # conversation_id -> chat object
+        self.active_chat_id = None
+        
         # Initialize TTS engine
         import pyttsx3
         self.tts_engine = pyttsx3.init()
         self.tts_engine.setProperty('rate', 175)  # Speed of speech
         self.tts_engine.setProperty('volume', 1.0)  # Volume (0.0 to 1.0)
         
+        # Initialize response cache
+        self.response_cache = {}
+        self.cache_size = 100
+        
         # Initialize caches
-        self.response_cache = {}  # Cache for AI responses
         self.tts_cache = {}      # Cache for TTS audio
-        self.cache_size = 100    # Maximum cache entries
         
         # Pre-warm the model with a dummy request
         try:
@@ -244,15 +250,40 @@ class VoiceProcessor:
             print(f"Error recognizing speech: {e}")
             return None
 
-    def get_ai_response(self, text: str) -> str:
-        """Get AI response with caching."""
+    def create_new_chat(self) -> str:
+        """Create a new chat and return its ID."""
+        import uuid
+        chat_id = str(uuid.uuid4())
+        self.chats[chat_id] = self.model.start_chat(history=[])
+        return chat_id
+        
+    def get_chat(self, chat_id: str = None):
+        """Get chat by ID or create new if doesn't exist."""
+        if chat_id is None:
+            # If no chat_id provided, use active chat or create new one
+            if self.active_chat_id is None:
+                chat_id = self.create_new_chat()
+            else:
+                chat_id = self.active_chat_id
+        elif chat_id not in self.chats:
+            # If specific chat_id provided but doesn't exist, raise error
+            raise ValueError(f"Chat with ID {chat_id} does not exist")
+        
+        self.active_chat_id = chat_id
+        return self.chats[chat_id]
+        
+    def get_ai_response(self, text: str, chat_id: str = None) -> str:
+        """Get AI response with chat history."""
         try:
             # Check cache first
             if text in self.response_cache:
                 return self.response_cache[text]
             
-            # Generate new response
-            response = self.model.generate_content(text)
+            # Get or create chat
+            chat = self.get_chat(chat_id)
+            
+            # Generate new response using chat
+            response = chat.send_message(text)
             result = response.text
             
             # Update cache (with size limit)
@@ -263,9 +294,45 @@ class VoiceProcessor:
             
             return result
             
+        except ValueError as e:
+            # Chat ID does not exist
+            print(f"Chat error: {e}")
+            return str(e)
         except Exception as e:
+            # Other errors (model errors, network issues, etc.)
             print(f"Error getting AI response: {e}")
-            return "I apologize, but I couldn't process your request at the moment."
+            return "I apologize, but I couldn't process your request at the moment. Please try again."
+            
+    def clear_history(self, chat_id: str = None):
+        """Clear chat history and start fresh."""
+        if chat_id is None:
+            chat_id = self.active_chat_id
+            
+        if chat_id not in self.chats:
+            raise ValueError(f"Chat with ID {chat_id} does not exist")
+            
+        # Start a new chat with the same ID
+        self.chats[chat_id] = self.model.start_chat(history=[])
+        return chat_id
+
+    def get_history(self, chat_id: str = None):
+        """Get current chat history in a serializable format."""
+        chat = self.get_chat(chat_id)
+        history = []
+        for msg in chat.history:
+            history.append({
+                "role": "user" if msg.role == "user" else "assistant",
+                "text": msg.parts[0].text
+            })
+        return history
+        
+    def list_chats(self):
+        """List all active chats."""
+        return [{
+            "id": chat_id,
+            "is_active": chat_id == self.active_chat_id,
+            "history": self.get_history(chat_id)
+        } for chat_id in self.chats]
 
     def text_to_speech(self, text: str) -> bytes:
         """Convert text to speech with caching."""

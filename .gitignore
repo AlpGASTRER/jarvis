@@ -29,7 +29,7 @@ debug_voice.py
 test_mic.py
 test_voice.py
 test_wit.py
-src/utils/code_helper.py
+tests/code_helper.py
 
 # IDE specific files
 .idea/
@@ -41,4 +41,3 @@ src/utils/code_helper.py
 # OS specific files
 .DS_Store
 Thumbs.db
-.env

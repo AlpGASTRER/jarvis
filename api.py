@@ -193,17 +193,10 @@ class TextResponse(BaseModel):
     audio_response: Optional[Dict[str, Any]] = None
 
 class ConversationRequest(BaseModel):
-    """
-    Model for conversation management requests.
-    
-    Attributes:
-        action: Action to perform (start/continue/clear)
-        text: Input text for continuation
-        conversation_id: ID of conversation to continue
-    """
-    action: str = Field(..., description="Action to perform: 'start', 'continue', 'clear'")
-    text: Optional[str] = Field(None, description="Text for continuation")
-    conversation_id: Optional[str] = Field(None, description="Conversation ID for continuation")
+    """Request model for conversation management."""
+    action: str = Field(..., description="Action to perform: start, continue, clear, list, switch")
+    text: Optional[str] = Field(None, description="Text to process")
+    chat_id: Optional[str] = Field(None, description="Chat ID to use")
 
 # API Routes
 @app.post("/text", response_model=TextResponse, tags=["Text"])
@@ -214,31 +207,24 @@ async def process_text(request: TextRequest):
     Can return both text and audio responses.
     """
     try:
-        # Initialize Gemini AI
-        import google.generativeai as genai
-        genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
-        model = genai.GenerativeModel('gemini-pro')
-        
         # Process based on mode
         if request.mode == "code":
             # Use code helper for code-related queries
             response = code_helper.get_code_help(request.text)
         else:
-            # Get general AI response
-            response = model.generate_content(request.text)
-            response = response.text
+            # Get general AI response with history
+            response = voice_processor.get_ai_response(request.text)
             
         result = {
             "success": True,
             "response": response,
-            "audio_response": None
+            "audio_response": None,
+            "history": voice_processor.get_history()
         }
         
         # Generate audio response if requested
         if request.return_audio:
-            from src.utils.voice_processor import VoiceProcessor
-            processor = VoiceProcessor()
-            audio_data = processor.text_to_speech(
+            audio_data = voice_processor.text_to_speech(
                 response, 
                 voice_settings=request.voice_settings
             )
@@ -406,18 +392,48 @@ async def manage_conversation(request: ConversationRequest):
     """
     try:
         if request.action == "start":
-            return {"success": True, "conversation_id": "Conversation ID not implemented yet"}
+            chat_id = voice_processor.create_new_chat()
+            return {
+                "success": True, 
+                "message": "New conversation started",
+                "chat_id": chat_id,
+                "history": []
+            }
             
         elif request.action == "continue" and request.text:
-            if not request.conversation_id:
-                raise HTTPException(status_code=400, detail="Conversation ID required")
-            return {"success": True, "response": "Continuing conversation not implemented yet"}
+            response = voice_processor.get_ai_response(request.text, request.chat_id)
+            history = voice_processor.get_history(request.chat_id)
+            return {
+                "success": True,
+                "chat_id": voice_processor.active_chat_id,
+                "response": response,
+                "history": history
+            }
             
         elif request.action == "clear":
-            if request.conversation_id:
-                return {"success": True, "message": "Clearing conversation not implemented yet"}
-            else:
-                return {"success": True, "message": "Clearing all conversations not implemented yet"}
+            voice_processor.clear_history(request.chat_id)
+            return {
+                "success": True,
+                "message": "Conversation history cleared",
+                "chat_id": voice_processor.active_chat_id,
+                "history": []
+            }
+            
+        elif request.action == "list":
+            chats = voice_processor.list_chats()
+            return {
+                "success": True,
+                "chats": chats
+            }
+            
+        elif request.action == "switch" and request.chat_id:
+            chat = voice_processor.get_chat(request.chat_id)
+            return {
+                "success": True,
+                "message": f"Switched to chat {request.chat_id}",
+                "chat_id": request.chat_id,
+                "history": voice_processor.get_history(request.chat_id)
+            }
             
         else:
             raise HTTPException(status_code=400, detail="Invalid action or missing parameters")
@@ -466,10 +482,6 @@ async def websocket_voice(websocket: WebSocket):
         await manager.connect(websocket)
         print("WebSocket connection opened")
         
-        # Initialize processors
-        from src.utils.voice_processor import VoiceProcessor
-        voice_processor = VoiceProcessor()
-        
         while True:
             try:
                 # Receive message
@@ -508,13 +520,15 @@ async def websocket_voice(websocket: WebSocket):
                     })
                     
                     if recognized_text:
-                        # Get AI response
+                        # Get AI response with history
                         response = voice_processor.get_ai_response(recognized_text)
+                        history = voice_processor.get_history()
                         
-                        # Send text response
+                        # Send text response with history
                         await websocket.send_json({
                             "type": "response",
-                            "text": response
+                            "text": response,
+                            "history": history
                         })
                         
                         # Generate and send audio response if needed
@@ -534,13 +548,15 @@ async def websocket_voice(websocket: WebSocket):
                         })
                         continue
                         
-                    # Get AI response for text
+                    # Get AI response with history
                     response = voice_processor.get_ai_response(data['text'])
+                    history = voice_processor.get_history()
                     
-                    # Send text response
+                    # Send text response with history
                     await websocket.send_json({
                         "type": "response",
-                        "text": response
+                        "text": response,
+                        "history": history
                     })
                     
                     # Generate and send audio response if needed
