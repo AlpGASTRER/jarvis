@@ -52,8 +52,9 @@ class TTSProcessor:
         self._engine_lock = threading.Lock()
         self._audio_queue = queue.Queue()
         self._sample_width = 2  # 16-bit audio
-        self._sample_rate = 22050  # Standard TTS sample rate
-        self._channels = 1  # Mono audio
+        self._sample_rate = 44100  # Match pygame mixer frequency
+        self._channels = 2  # Stereo to match pygame mixer
+        self._cleanup_delay = 0.5  # Delay before cleanup in seconds
         
     def _lazy_init_engine(self):
         """
@@ -75,6 +76,32 @@ class TTSProcessor:
                         if 'david' in voice.name.lower() or 'mark' in voice.name.lower():
                             self._engine.setProperty('voice', voice.id)
                             break
+                            
+    def _calculate_duration(self, wav_data: bytes) -> float:
+        """
+        Calculate the duration of WAV audio data in seconds.
+        
+        Args:
+            wav_data: Raw WAV audio data
+            
+        Returns:
+            float: Duration in seconds
+        """
+        with wave.open(io.BytesIO(wav_data), 'rb') as wav_file:
+            frames = wav_file.getnframes()
+            rate = wav_file.getframerate()
+            duration = frames / float(rate)
+            return duration
+            
+    def _wait_for_playback(self, duration: float):
+        """
+        Wait for audio playback to complete.
+        
+        Args:
+            duration: Audio duration in seconds
+        """
+        # Add a small buffer to ensure complete playback
+        time.sleep(duration + self._cleanup_delay)
     
     def text_to_speech_base64(self, text: str, retry_count: int = 3) -> dict:
         """
@@ -91,6 +118,7 @@ class TTSProcessor:
                 - sample_rate: Audio sample rate
                 - channels: Number of audio channels
                 - sample_width: Audio sample width
+                - duration: Audio duration in seconds
                 - error: Error message (if failed)
         """
         try:
@@ -123,8 +151,11 @@ class TTSProcessor:
                             raise
                         time.sleep(0.1)  # Brief pause before retry
                         
-            # Convert audio data to base64
+            # Get audio data and calculate duration
             audio_data = buffer.getvalue()
+            duration = self._calculate_duration(audio_data)
+            
+            # Convert to base64
             audio_base64 = base64.b64encode(audio_data).decode('utf-8')
             
             return {
@@ -132,7 +163,8 @@ class TTSProcessor:
                 "audio_base64": audio_base64,
                 "sample_rate": self._sample_rate,
                 "channels": self._channels,
-                "sample_width": self._sample_width
+                "sample_width": self._sample_width,
+                "duration": duration
             }
             
         except Exception as e:
@@ -174,8 +206,14 @@ class TTSProcessor:
                     self._engine.say(text)
                     self._engine.runAndWait()
                         
-            # Return the raw audio data
-            return buffer.getvalue()
+            # Get audio data and calculate duration
+            audio_data = buffer.getvalue()
+            duration = self._calculate_duration(audio_data)
+            
+            # Wait for playback and cleanup
+            self._wait_for_playback(duration)
+            
+            return audio_data
             
         except Exception as e:
             print(f"TTS error in processor: {str(e)}")

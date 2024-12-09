@@ -12,6 +12,7 @@ import pygame
 import speech_recognition as sr
 import os
 import io
+import audioop
 
 # Initialize colorama
 init()
@@ -24,35 +25,261 @@ RATE = 16000
 
 class AudioPlayer:
     def __init__(self):
-        pygame.mixer.init()
-
-    def play_audio(self, audio_data):
-        """Play audio from bytes data"""
+        """Initialize the audio player with pygame mixer"""
         try:
-            # Save audio data to a temporary file
-            temp_wav = "temp_audio.wav"
+            # Make sure pygame is initialized
+            if not pygame.get_init():
+                pygame.init()
+            
+            # Reset and reinitialize the mixer with specific settings
+            pygame.mixer.quit()
+            pygame.mixer.init(
+                frequency=44100,  # Standard frequency
+                size=-16,         # 16-bit signed
+                channels=2,       # Stereo
+                buffer=2048       # Smaller buffer for less latency
+            )
+            
+            # Set volume to maximum
+            pygame.mixer.music.set_volume(1.0)
+            print(f"{Fore.GREEN}Audio player initialized successfully{Style.RESET_ALL}")
+            print(f"Mixer settings: {pygame.mixer.get_init()}")
+            
+        except Exception as e:
+            print(f"{Fore.RED}Failed to initialize audio player: {str(e)}{Style.RESET_ALL}")
+            print(f"Pygame initialization status: {pygame.get_init()}")
+            print(f"Mixer initialization status: {pygame.mixer.get_init()}")
+
+    async def play_audio(self, audio_data):
+        """Play audio from bytes data asynchronously."""
+        temp_files = []  # Keep track of temporary files
+        try:
+            # Handle base64 input
+            if isinstance(audio_data, str):
+                print(f"{Fore.CYAN}Decoding base64 audio data...{Style.RESET_ALL}")
+                audio_data = base64.b64decode(audio_data)
+            
+            print(f"{Fore.CYAN}Audio data size: {len(audio_data)} bytes{Style.RESET_ALL}")
+            
+            # Create unique filenames using absolute paths
+            temp_wav = os.path.abspath(os.path.join(os.getcwd(), f"temp_audio_{int(time.time()*1000)}.wav"))
+            temp_files.append(temp_wav)
+            
+            # Save initial audio data
             with open(temp_wav, 'wb') as f:
                 f.write(audio_data)
+            print(f"{Fore.GREEN}Saved audio to {temp_wav}{Style.RESET_ALL}")
             
-            try:
-                # Play the audio
-                pygame.mixer.music.load(temp_wav)
-                pygame.mixer.music.play()
-                while pygame.mixer.music.get_busy():
-                    time.sleep(0.1)
-            finally:
-                # Clean up
-                pygame.mixer.music.unload()
-                if os.path.exists(temp_wav):
-                    os.remove(temp_wav)
+            # Read and convert audio if needed
+            with wave.open(temp_wav, 'rb') as wav_file:
+                params = wav_file.getparams()
+                print(f"Input WAV parameters: {params}")
+                
+                # Check if conversion is needed
+                needs_conversion = params.framerate != 44100 or params.nchannels != 2
+                
+                if needs_conversion:
+                    print(f"{Fore.YELLOW}Converting audio format...{Style.RESET_ALL}")
+                    
+                    # Read all audio data
+                    audio_data = wav_file.readframes(wav_file.getnframes())
+                    
+                    # Convert sample rate if needed
+                    if params.framerate != 44100:
+                        print(f"Converting sample rate from {params.framerate} to 44100")
+                        audio_data, _ = audioop.ratecv(audio_data, params.sampwidth, 
+                                                     params.nchannels, params.framerate,
+                                                     44100, None)
+                    
+                    # Convert to stereo if mono
+                    if params.nchannels == 1:
+                        print("Converting mono to stereo")
+                        audio_data = audioop.tostereo(audio_data, params.sampwidth, 1, 1)
+                    
+                    # Create new temp file for converted audio
+                    converted_wav = os.path.abspath(os.path.join(os.getcwd(), f"temp_audio_converted_{int(time.time()*1000)}.wav"))
+                    temp_files.append(converted_wav)
+                    
+                    # Write converted audio
+                    with wave.open(converted_wav, 'wb') as out_wav:
+                        out_wav.setnchannels(2)
+                        out_wav.setsampwidth(params.sampwidth)
+                        out_wav.setframerate(44100)
+                        out_wav.writeframes(audio_data)
+                    
+                    print(f"{Fore.GREEN}Audio conversion complete{Style.RESET_ALL}")
+                    
+                    # Use the converted file for playback
+                    playback_file = converted_wav
+                else:
+                    # Use original file if no conversion needed
+                    playback_file = temp_wav
+            
+            # Play the audio
+            print(f"{Fore.CYAN}Loading audio file...{Style.RESET_ALL}")
+            pygame.mixer.music.load(playback_file)
+            print(f"{Fore.CYAN}Playing audio...{Style.RESET_ALL}")
+            pygame.mixer.music.play()
+            
+            # Wait for playback to complete
+            start_time = time.time()
+            duration = params.nframes / params.framerate  # Calculate audio duration
+            print(f"Audio duration: {duration:.2f} seconds")
+            
+            while pygame.mixer.music.get_busy() or (time.time() - start_time) < duration:
+                await asyncio.sleep(0.1)
+            
+            print(f"{Fore.GREEN}Audio playback completed{Style.RESET_ALL}")
+            
+            # Give a small delay after playback before cleanup
+            await asyncio.sleep(0.5)
+            
+            # Now safe to cleanup
+            pygame.mixer.music.unload()
+            pygame.mixer.music.stop()
+            
+            # Clean up files after playback is complete
+            for temp_file in temp_files:
+                try:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                        print(f"{Fore.CYAN}Cleaned up temporary file: {temp_file}{Style.RESET_ALL}")
+                except Exception as e:
+                    print(f"{Fore.RED}Error cleaning up {temp_file}: {str(e)}{Style.RESET_ALL}")
+            
+            return True
             
         except Exception as e:
             print(f"{Fore.RED}Error playing audio: {str(e)}{Style.RESET_ALL}")
+            print(f"{Fore.RED}Audio data type: {type(audio_data)}{Style.RESET_ALL}")
+            return False
+
+    async def play_audio(self, audio_data):
+        """Play audio from bytes data asynchronously."""
+        temp_files = []  # Keep track of temporary files
+        try:
+            # Handle base64 input
+            if isinstance(audio_data, str):
+                print(f"{Fore.CYAN}Decoding base64 audio data...{Style.RESET_ALL}")
+                audio_data = base64.b64decode(audio_data)
+            
+            print(f"{Fore.CYAN}Audio data size: {len(audio_data)} bytes{Style.RESET_ALL}")
+            
+            # Create unique filenames using absolute paths
+            temp_wav = os.path.abspath(os.path.join(os.getcwd(), f"temp_audio_{int(time.time()*1000)}.wav"))
+            temp_files.append(temp_wav)
+            
+            # Save initial audio data
+            with open(temp_wav, 'wb') as f:
+                f.write(audio_data)
+            print(f"{Fore.GREEN}Saved audio to {temp_wav}{Style.RESET_ALL}")
+            
+            # Read and convert audio if needed
+            with wave.open(temp_wav, 'rb') as wav_file:
+                params = wav_file.getparams()
+                print(f"Input WAV parameters: {params}")
+                
+                # Check if conversion is needed
+                needs_conversion = params.framerate != 44100 or params.nchannels != 2
+                
+                if needs_conversion:
+                    print(f"{Fore.YELLOW}Converting audio format...{Style.RESET_ALL}")
+                    
+                    # Read all audio data
+                    audio_data = wav_file.readframes(wav_file.getnframes())
+                    
+                    # Convert sample rate if needed
+                    if params.framerate != 44100:
+                        print(f"Converting sample rate from {params.framerate} to 44100")
+                        audio_data, _ = audioop.ratecv(audio_data, params.sampwidth, 
+                                                     params.nchannels, params.framerate,
+                                                     44100, None)
+                    
+                    # Convert to stereo if mono
+                    if params.nchannels == 1:
+                        print("Converting mono to stereo")
+                        audio_data = audioop.tostereo(audio_data, params.sampwidth, 1, 1)
+                    
+                    # Create new temp file for converted audio
+                    converted_wav = os.path.abspath(os.path.join(os.getcwd(), f"temp_audio_converted_{int(time.time()*1000)}.wav"))
+                    temp_files.append(converted_wav)
+                    
+                    # Write converted audio
+                    with wave.open(converted_wav, 'wb') as out_wav:
+                        out_wav.setnchannels(2)
+                        out_wav.setsampwidth(params.sampwidth)
+                        out_wav.setframerate(44100)
+                        out_wav.writeframes(audio_data)
+                    
+                    print(f"{Fore.GREEN}Audio conversion complete{Style.RESET_ALL}")
+                    
+                    # Use the converted file for playback
+                    playback_file = converted_wav
+                else:
+                    # Use original file if no conversion needed
+                    playback_file = temp_wav
+            
+            # Play the audio
+            print(f"{Fore.CYAN}Loading audio file...{Style.RESET_ALL}")
+            pygame.mixer.music.load(playback_file)
+            print(f"{Fore.CYAN}Playing audio...{Style.RESET_ALL}")
+            pygame.mixer.music.play()
+            
+            # Wait for playback to complete
+            start_time = time.time()
+            duration = params.nframes / params.framerate  # Calculate audio duration
+            print(f"Audio duration: {duration:.2f} seconds")
+            
+            while pygame.mixer.music.get_busy() or (time.time() - start_time) < duration:
+                await asyncio.sleep(0.1)
+            
+            print(f"{Fore.GREEN}Audio playback completed{Style.RESET_ALL}")
+            
+            # Give a small delay after playback before cleanup
+            await asyncio.sleep(0.5)
+            
+            # Now safe to cleanup
+            pygame.mixer.music.unload()
+            pygame.mixer.music.stop()
+            
+            # Clean up files after playback is complete
+            for temp_file in temp_files:
+                try:
+                    if os.path.exists(temp_file):
+                        os.remove(temp_file)
+                        print(f"{Fore.CYAN}Cleaned up temporary file: {temp_file}{Style.RESET_ALL}")
+                except Exception as e:
+                    print(f"{Fore.RED}Error cleaning up {temp_file}: {str(e)}{Style.RESET_ALL}")
+            
+            return True
+            
+        except Exception as e:
+            print(f"{Fore.RED}Error playing audio: {str(e)}{Style.RESET_ALL}")
+            print(f"{Fore.RED}Audio data type: {type(audio_data)}{Style.RESET_ALL}")
+            return False
 
 class TestClient:
     def __init__(self):
+        """Initialize test client with base URL and audio recorder"""
         self.base_url = "http://localhost:8000"
-        
+        self.audio_base64 = None
+        self.cleanup_temp_files()  # Clean up any leftover files from previous runs
+
+    def cleanup_temp_files(self):
+        """Clean up any temporary audio files from previous runs"""
+        try:
+            current_dir = os.getcwd()
+            for filename in os.listdir(current_dir):
+                if filename.startswith("temp_audio_") and filename.endswith(".wav"):
+                    try:
+                        filepath = os.path.join(current_dir, filename)
+                        os.remove(filepath)
+                        print(f"{Fore.CYAN}Cleaned up old temporary file: {filepath}{Style.RESET_ALL}")
+                    except Exception as e:
+                        print(f"{Fore.YELLOW}Could not remove old file {filepath}: {str(e)}{Style.RESET_ALL}")
+        except Exception as e:
+            print(f"{Fore.RED}Error during cleanup: {str(e)}{Style.RESET_ALL}")
+
     def record_audio(self):
         """Record audio from microphone and return the audio data"""
         print("\n* Recording...")
@@ -153,7 +380,10 @@ class TestClient:
                     print("\nPlaying audio response...")
                     audio_data = base64.b64decode(result['audio_response']['audio_base64'])
                     player = AudioPlayer()
-                    player.play_audio(audio_data)
+                    success = asyncio.run(player.play_audio(audio_data))
+                    
+                    if not success:
+                        print(f"{Fore.RED}Failed to play audio response{Style.RESET_ALL}")
             else:
                 print(f"\nError: {response.text}\n")
                 
@@ -209,64 +439,104 @@ class TestClient:
             print(f"\nError: {str(e)}\n")
 
     async def test_websocket_conversation(self, websocket):
-        """Handle conversation in WebSocket connection"""
+        """
+        Handle conversation in WebSocket connection.
+        
+        Processes both text and audio responses from the AI assistant.
+        """
         try:
+            # Send audio with return_audio flag
+            message = {
+                'type': 'audio',
+                'audio': self.audio_base64,
+                'return_audio': True  # Request audio response
+            }
+            
+            # Send the message
+            print(f"{Fore.CYAN}Sending audio data...{Style.RESET_ALL}")
+            await websocket.send(json.dumps(message))
+            
             # Get recognition result
+            print(f"{Fore.CYAN}Waiting for recognition result...{Style.RESET_ALL}")
             response = await websocket.recv()
             result = json.loads(response)
             
             if result.get("type") == "recognition":
-                print("\nRecognition Result:")
+                print(f"\n{Fore.CYAN}Recognition Result:{Style.RESET_ALL}")
                 print(f"Success: {result.get('success', False)}")
                 print(f"Text: {result.get('text', 'N/A')}")
                 
                 # Get AI response if recognition was successful
                 if result.get("success"):
+                    print(f"{Fore.CYAN}Waiting for AI response...{Style.RESET_ALL}")
                     response = await websocket.recv()
                     result = json.loads(response)
                     
                     if result.get("type") == "response":
-                        print("\nAI Response:")
+                        print(f"\n{Fore.YELLOW}AI Response:{Style.RESET_ALL}")
                         print(f"Text: {result.get('text', 'N/A')}")
-                        print("\nConversation History:")
+                        
+                        # Print conversation history
+                        print(f"\n{Fore.CYAN}Conversation History:{Style.RESET_ALL}")
                         for msg in result.get('history', []):
                             role = msg['role']
                             text = msg['text']
-                            print(f"{Fore.GREEN if role == 'assistant' else Fore.BLUE}{role}: {text}{Style.RESET_ALL}")
+                            color = Fore.GREEN if role == 'assistant' else Fore.BLUE
+                            print(f"{color}{role}: {text}{Style.RESET_ALL}")
                         
-                        # If audio response is present
-                        if result.get("audio"):
-                            print("\nPlaying audio response...")
-                            audio_data = base64.b64decode(result["audio"])
-                            player = AudioPlayer()
-                            player.play_audio(audio_data)
+                        # Wait for audio response
+                        print(f"{Fore.CYAN}Waiting for audio response...{Style.RESET_ALL}")
+                        response = await websocket.recv()
+                        result = json.loads(response)
+                        
+                        # Handle audio response
+                        if result.get("type") == "audio":
+                            print(f"\n{Fore.YELLOW}Audio response received{Style.RESET_ALL}")
+                            audio_data = result.get("data")  # This is base64 encoded
+                            if audio_data:
+                                print(f"{Fore.YELLOW}Playing AI response...{Style.RESET_ALL}")
+                                player = AudioPlayer()
+                                success = await player.play_audio(audio_data)
+                                
+                                if success:
+                                    print(f"{Fore.GREEN}Audio playback successful{Style.RESET_ALL}")
+                                else:
+                                    print(f"{Fore.RED}Failed to play audio response{Style.RESET_ALL}")
+                        else:
+                            print(f"{Fore.YELLOW}No audio response received{Style.RESET_ALL}")
                             
+        except websockets.exceptions.ConnectionClosed:
+            print(f"{Fore.RED}WebSocket connection closed unexpectedly{Style.RESET_ALL}")
+        except json.JSONDecodeError:
+            print(f"{Fore.RED}Failed to parse WebSocket response{Style.RESET_ALL}")
         except Exception as e:
-            print(f"Error in WebSocket conversation: {e}")
+            print(f"{Fore.RED}Error in WebSocket conversation: {str(e)}{Style.RESET_ALL}")
 
     def test_websocket_endpoint(self):
-        """Test the /ws/voice WebSocket endpoint"""
-        print("Testing WebSocket endpoint...")
+        """
+        Test the /ws/voice WebSocket endpoint with audio response.
+        """
+        print(f"\n{Fore.CYAN}Testing WebSocket endpoint...{Style.RESET_ALL}")
         
         # Record audio first
         audio_data = self.record_audio()
         if audio_data is None:
-            print("Failed to record audio")
+            print(f"{Fore.RED}Failed to record audio{Style.RESET_ALL}")
             return
             
+        self.audio_base64 = base64.b64encode(audio_data).decode()
+        
         async def test_ws():
             uri = f"{self.base_url.replace('http', 'ws')}/ws/voice"
-            async with websockets.connect(uri) as websocket:
-                # Send audio data as JSON with proper format
-                message = {
-                    "type": "audio",
-                    "audio": base64.b64encode(audio_data).decode(),
-                    "return_audio": True
-                }
-                await websocket.send(json.dumps(message))
-                print("Sent audio data, waiting for response...")
-                
-                await self.test_websocket_conversation(websocket)
+            try:
+                async with websockets.connect(uri) as websocket:
+                    await self.test_websocket_conversation(websocket)
+            except websockets.exceptions.InvalidURI:
+                print(f"{Fore.RED}Invalid WebSocket URI: {uri}{Style.RESET_ALL}")
+            except websockets.exceptions.ConnectionRefused:
+                print(f"{Fore.RED}Connection refused. Is the server running?{Style.RESET_ALL}")
+            except Exception as e:
+                print(f"{Fore.RED}WebSocket connection error: {str(e)}{Style.RESET_ALL}")
                 
         asyncio.get_event_loop().run_until_complete(test_ws())
 
