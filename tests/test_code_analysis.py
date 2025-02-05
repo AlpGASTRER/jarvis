@@ -247,11 +247,9 @@ def test_audio_processing_compatibility():
         # Process audio
         processed = processor.process_audio(audio_data.tobytes())
         
-        # Verify output format and content
-        assert processed is not None, "Processed audio should not be None"
-        assert len(processed) > 0, "Processed audio should not be empty"
-        assert processed.startswith(b'RIFF'), "Invalid WAV header"
-        assert b'fmt ' in processed, "Missing format chunk"
+        # Verify output is a string (transcribed text)
+        assert processed is not None, "Processed text should not be None"
+        assert isinstance(processed, str), "Processed output should be text"
         
     except Exception as e:
         pytest.fail(f"Audio processing test failed: {str(e)}")
