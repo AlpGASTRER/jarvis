@@ -4,10 +4,13 @@ Tests various scenarios and features of the code analysis endpoint.
 """
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from api import app
 import json
 from typing import Dict, Any
+import numpy as np
+from src.utils.voice_processor import VoiceProcessor
 
 # We don't need async for TestClient - it's already handling async operations internally
 @pytest.fixture
@@ -209,3 +212,46 @@ class UserManager {
     assert analysis["complexity"] >= 1.0
 
     print("JavaScript analysis test passed")
+
+def test_gemini_flash_capabilities(client):
+    """Test enhanced multi-modal analysis capabilities"""
+    test_code = '''def sum(a, b): return a + b'''
+    response = client.post(
+        "/code/analyze",
+        json={
+            "code": test_code,
+            "language": "python",
+            "analysis_type": "full"
+        }
+    )
+    
+    # Validate enhanced metrics
+    result = response.json()
+    assert result["success"] == True
+    assert "security_analysis" in result["analysis"]
+    assert result["complexity_score"] > 0
+    assert "type_hints" in result["suggestions"]
+
+def test_audio_processing_compatibility():
+    """Test audio processing with Gemini voice capabilities"""
+    try:
+        # Initialize processor with default settings
+        processor = VoiceProcessor()
+        
+        # Create test audio data (1 second of silence)
+        duration = 1  # seconds
+        sample_rate = 16000
+        num_samples = duration * sample_rate
+        audio_data = np.zeros(num_samples, dtype=np.int16)
+        
+        # Process audio
+        processed = processor.process_audio(audio_data.tobytes())
+        
+        # Verify output format and content
+        assert processed is not None, "Processed audio should not be None"
+        assert len(processed) > 0, "Processed audio should not be empty"
+        assert processed.startswith(b'RIFF'), "Invalid WAV header"
+        assert b'fmt ' in processed, "Missing format chunk"
+        
+    except Exception as e:
+        pytest.fail(f"Audio processing test failed: {str(e)}")

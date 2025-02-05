@@ -3,12 +3,12 @@ Voice Processing Module
 
 This module handles voice recognition and audio processing tasks for the Jarvis AI Assistant.
 It provides functionality for processing audio data, noise reduction, and speech recognition
-using the Wit.ai service.
+using the Gemini AI service.
 
 Key Features:
 - Audio format conversion
 - Noise reduction using noisereduce
-- Speech recognition via Wit.ai
+- Speech recognition via Gemini AI
 - Support for base64 encoded audio
 - Error handling and fallback strategies
 
@@ -27,19 +27,21 @@ import io
 import wave
 import base64
 import os
+import google.generativeai as genai
 
 class VoiceProcessor:
     """
     A class for processing voice input and performing speech recognition.
     
     This class handles audio data conversion, enhancement, and speech recognition
-    using the Wit.ai service. It supports both raw and base64 encoded audio data,
+    using the Gemini AI service. It supports both raw and base64 encoded audio data,
     and includes noise reduction capabilities for improved recognition accuracy.
     
     Attributes:
         recognizer: SpeechRecognition recognizer instance
         model: Gemini AI model instance
         tts_engine: pyttsx3 TTS engine instance
+        audio_model: Gemini AI audio model instance
     """
     
     def __init__(self):
@@ -47,9 +49,9 @@ class VoiceProcessor:
         self.recognizer = sr.Recognizer()
         
         # Initialize Gemini AI once
-        import google.generativeai as genai
         genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
         self.model = genai.GenerativeModel('gemini-pro')
+        self.audio_model = genai.GenerativeModel('gemini-2.0-flash-exp')
         
         # Initialize chat storage
         self.chats = {}  # conversation_id -> chat object
@@ -146,29 +148,43 @@ class VoiceProcessor:
         
         return original_audio, enhanced_audio
         
-    def recognize_wit(self, audio_data: sr.AudioData, wit_key: str) -> str:
+    def process_audio(self, audio_data: Union[bytes, np.ndarray], sample_rate: int = 16000) -> str:
         """
-        Perform speech recognition using Wit.ai service.
-        
+        Process audio data using Gemini's speech recognition
+
         Args:
-            audio_data: Audio data in SpeechRecognition format
-            wit_key: Wit.ai API key
-            
+            audio_data: Raw audio data in bytes or numpy array
+            sample_rate: Audio sample rate in Hz (default: 16000)
+
         Returns:
             str: Recognized text
-            
+
         Raises:
             ValueError: If speech couldn't be understood
-            RuntimeError: If Wit.ai service request fails
+            RuntimeError: If Gemini service request fails
         """
         try:
-            return self.recognizer.recognize_wit(audio_data, key=wit_key)
-        except sr.UnknownValueError:
-            raise ValueError("Could not understand audio")
-        except sr.RequestError as e:
-            raise RuntimeError(f"Could not request results from Wit.ai service; {str(e)}")
+            # Convert audio to Gemini-compatible format
+            if isinstance(audio_data, np.ndarray):
+                audio_data = audio_data.tobytes()
+            audio_content = {
+                'mime_type': 'audio/wav',
+                'data': base64.b64encode(audio_data).decode('utf-8')
+            }
+            response = self.audio_model.generate_content(
+                contents=[{
+                    'role': 'user',
+                    'parts': [
+                        {'text': 'Process this audio:'},
+                        audio_content
+                    ]
+                }]
+            )
+            return response.text
+        except Exception as e:
+            raise RuntimeError(f"Could not request results from Gemini service; {str(e)}")
             
-    def process_voice(self, audio_base64: str, wit_key: str, sample_rate: int = 16000, channels: int = 1) -> dict:
+    def process_voice(self, audio_base64: str, sample_rate: int = 16000, channels: int = 1) -> dict:
         """
         Process voice data and perform speech recognition with fallback strategy.
         
@@ -177,7 +193,6 @@ class VoiceProcessor:
         
         Args:
             audio_base64: Base64 encoded audio data
-            wit_key: Wit.ai API key
             sample_rate: Audio sample rate in Hz (default: 16000)
             channels: Number of audio channels (default: 1)
             
@@ -194,11 +209,11 @@ class VoiceProcessor:
             
             # Try recognition with original audio first
             try:
-                text = self.recognize_wit(original_audio, wit_key)
+                text = self.process_audio(original_audio.frame_data, sample_rate)
                 audio_used = "original"
             except (ValueError, RuntimeError):
                 # Fallback to enhanced audio if original fails
-                text = self.recognize_wit(enhanced_audio, wit_key)
+                text = self.process_audio(enhanced_audio.frame_data, sample_rate)
                 audio_used = "enhanced"
                 
             return {
@@ -215,7 +230,7 @@ class VoiceProcessor:
 
     def recognize_speech(self, audio_data: bytes) -> str:
         """
-        Recognize speech from audio data using Wit.ai.
+        Recognize speech from audio data using Gemini.
         
         Args:
             audio_data: Raw audio data in bytes
@@ -224,28 +239,10 @@ class VoiceProcessor:
             str: Recognized text, or None if recognition failed
         """
         try:
-            # Get Wit.ai API key
-            wit_key = os.getenv('WIT_EN_KEY')
-            if not wit_key:
-                print("Wit.ai API key not found")
-                return None
-                
-            # Convert audio data to AudioData format
-            audio = self._convert_to_audio_data(audio_data, 16000, 1)
-            
-            # Use Wit.ai to recognize speech
-            text = self.recognizer.recognize_wit(
-                audio,
-                key=wit_key
-            )
+            # Use Gemini to recognize speech
+            text = self.process_audio(audio_data)
             return text
             
-        except sr.UnknownValueError:
-            print("Could not understand audio")
-            return None
-        except sr.RequestError as e:
-            print(f"Could not request results from Wit.ai; {e}")
-            return None
         except Exception as e:
             print(f"Error recognizing speech: {e}")
             return None

@@ -52,7 +52,7 @@ class Jarvis:
         
         # Initialize Gemini
         genai.configure(api_key=self.google_api_key)
-        self.model = genai.GenerativeModel('gemini-pro')
+        self.model = genai.GenerativeModel('gemini-2.0-flash-exp')
         self.chat = self.model.start_chat(history=[])
         
         # Keep recent conversation history

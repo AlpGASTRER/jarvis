@@ -25,6 +25,8 @@ from webrtcvad import Vad
 import audioop
 from typing import Any
 import speech_recognition as sr
+import io
+import wave
 
 class AudioProcessor:
     """
@@ -49,7 +51,26 @@ class AudioProcessor:
         self.vad = Vad(2)  # Moderate aggressiveness (0=least, 3=most)
         self.sample_rate = 16000  # 16kHz sample rate for optimal speech recognition
         
-    def process_audio(self, audio_data: sr.AudioData, sample_width: int = 2) -> sr.AudioData:
+    def validate_for_gemini(self, audio_data: np.ndarray, sample_rate: int) -> None:
+        """
+        Validate audio parameters for Gemini compatibility
+        """
+        if sample_rate not in [16000, 24000, 48000]:
+            raise ValueError(f"Unsupported sample rate {sample_rate}Hz. Gemini requires 16k, 24k or 48k")
+            
+    def convert_to_gemini_format(self, audio_data: np.ndarray, sample_rate: int) -> bytes:
+        """
+        Convert processed audio to Gemini-compatible WAV format
+        """
+        with io.BytesIO() as wav_buffer:
+            with wave.open(wav_buffer, 'wb') as wav_file:
+                wav_file.setnchannels(1)
+                wav_file.setsampwidth(2)
+                wav_file.setframerate(sample_rate)
+                wav_file.writeframes((audio_data * 32767).astype(np.int16).tobytes())
+            return wav_buffer.getvalue()
+            
+    def process_audio(self, audio_data: sr.AudioData, sample_width: int = 2) -> bytes:
         """
         Process audio data with quality-preserving enhancements.
         
@@ -63,7 +84,7 @@ class AudioProcessor:
             sample_width: Audio sample width in bytes (default: 2 for 16-bit)
             
         Returns:
-            sr.AudioData: Processed audio data
+            bytes: Processed audio data in Gemini-compatible WAV format
             
         Note:
             The processing pipeline is designed to be light and preserve
@@ -107,14 +128,13 @@ class AudioProcessor:
                 # If noise level is low, use the DC-offset corrected data
                 processed_data = raw_data
             
-            # Create new AudioData object with processed audio
-            return sr.AudioData(
-                processed_data,
-                audio_data.sample_rate,
-                audio_data.sample_width
-            )
+            # Validate audio parameters for Gemini compatibility
+            self.validate_for_gemini(np.frombuffer(processed_data, dtype=np.int16), audio_data.sample_rate)
+            
+            # Convert processed audio to Gemini-compatible WAV format
+            return self.convert_to_gemini_format(np.frombuffer(processed_data, dtype=np.int16), audio_data.sample_rate)
             
         except Exception as e:
             print(f"Audio processing error: {str(e)}")
             # Return original audio data if processing fails
-            return audio_data
+            return audio_data.get_raw_data()

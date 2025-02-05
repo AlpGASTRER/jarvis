@@ -35,6 +35,10 @@ import base64
 from src.utils.enhanced_code_helper import EnhancedCodeHelper
 from src.utils.voice_processor import VoiceProcessor
 import os
+import logging
+
+# Initialize logger
+logger = logging.getLogger(__name__)
 
 # Initialize core components
 code_helper = EnhancedCodeHelper()
@@ -140,19 +144,10 @@ class CodeMetrics(BaseModel):
     cyclomatic_complexity: Optional[float] = None
 
 class CodeRequest(BaseModel):
-    """
-    Model for code analysis requests.
-    
-    Attributes:
-        code: Source code to analyze
-        language: Programming language
-        analysis_type: Type of analysis to perform
-        config_path: Optional path to custom analysis configuration
-    """
-    code: str = Field(..., description="Code to analyze")
-    language: Optional[str] = Field(None, description="Programming language")
-    analysis_type: Optional[str] = Field("full", description="Type of analysis")
-    config_path: Optional[str] = Field(None, description="Path to custom analysis configuration")
+    """Code analysis request model"""
+    code: str
+    language: str
+    analysis_type: str = "full"  # Default to full analysis
 
 class CodeResponse(BaseModel):
     """
@@ -289,100 +284,51 @@ async def process_voice(
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/code/analyze", response_model=CodeResponse, tags=["Code Analysis"])
+@app.post("/code/analyze", tags=["Code Analysis"])
 async def analyze_code(request: CodeRequest):
     """
-    Analyze code and provide suggestions.
-    
-    Supports multiple programming languages and different types of analysis.
-    Enhanced with detailed metrics, security analysis, and best practices.
-    
-    Available languages:
-    - Python: General-purpose, AI/ML, Web
-    - JavaScript/TypeScript: Web, Node.js
-    - Java: Enterprise, Android
-    - C++: Systems, Games
-    - C#: Windows, Unity
-    - Go: Cloud, Systems
-    - Rust: Systems, WebAssembly
-    - Ruby: Web, Scripting
-    - PHP: Web Development
-    - Swift: iOS, macOS
-    - Kotlin: Android, JVM
-    
-    Returns:
-        CodeResponse: Comprehensive analysis results
-        
-    Raises:
-        HTTPException: If analysis fails or language is not supported
+    Analyze code using enhanced Gemini capabilities
     """
     try:
-        # Get code analysis
-        analysis = code_helper.analyze_code(request.code)
-        if not analysis:
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "success": False,
-                    "language": request.language or "unknown",
-                    "analysis": {},
-                    "suggestions": [],
-                    "error": "Code analysis failed. Please check the code and try again."
-                }
-            )
-
-        # Get additional analysis based on type
-        suggestions = code_helper.get_suggestions(request.code, analysis.language)
-        best_practices = None
-        security_issues = None
+        # Get basic analysis
+        analysis = code_helper.analyze_code(request.code, request.language)
         
-        if request.analysis_type in ['full', 'best_practices']:
-            best_practices = code_helper.get_best_practices(request.code, analysis.language)
-            
+        # Add security analysis if requested
         if request.analysis_type in ['full', 'security']:
-            security_issues = code_helper.analyze_security(request.code, analysis.language)
-
-        # Convert metrics to response format
-        metrics = None
-        if analysis.metrics:
-            metrics = {
-                "total_lines": analysis.metrics.get('total_lines', 0),
-                "non_empty_lines": analysis.metrics.get('non_empty_lines', 0),
-                "average_line_length": analysis.metrics.get('average_line_length', 0.0),
-                "num_functions": analysis.metrics.get('num_functions'),
-                "num_classes": analysis.metrics.get('num_classes'),
-                "num_imports": analysis.metrics.get('num_imports'),
-                "cyclomatic_complexity": analysis.complexity
-            }
-
-        return JSONResponse(
-            status_code=200,
-            content={
-                "success": True,
-                "language": analysis.language,
-                "analysis": {
-                    "code_blocks": analysis.code_blocks,
-                    "references": analysis.references
-                },
-                "suggestions": suggestions or [],
-                "best_practices": best_practices,
-                "security_issues": security_issues,
-                "complexity_score": analysis.complexity,
-                "metrics": metrics
-            }
-        )
-
+            security_results = code_helper.check_security(request.code)
+            analysis['security_analysis'] = security_results
+        
+        # Add best practices if requested
+        if request.analysis_type in ['full', 'best_practices']:
+            best_practices = code_helper.get_best_practices(request.code, request.language)
+            analysis['best_practices'] = best_practices
+            
+        # Add suggestions
+        suggestions = code_helper.generate_suggestions(request.code)
+        
+        # Calculate metrics directly
+        # Split lines and filter out empty lines at the start and end
+        lines = [line for line in request.code.splitlines() if line.strip()]
+        
+        metrics = {
+            'total_lines': len(lines),
+            'non_empty_lines': len(lines),
+            'average_line_length': sum(len(line.strip()) for line in lines) / len(lines) if lines else 0
+        }
+        
+        return {
+            "success": True,
+            "language": request.language,
+            "analysis": analysis,
+            "suggestions": suggestions,
+            "complexity_score": analysis.get('complexity', 0),
+            "security_issues": analysis.get('security_analysis', []),
+            "best_practices": analysis.get('best_practices', []),
+            "metrics": metrics
+        }
     except Exception as e:
-        return JSONResponse(
-            status_code=500,
-            content={
-                "success": False,
-                "language": request.language or "unknown",
-                "analysis": {},
-                "suggestions": [],
-                "error": str(e)
-            }
-        )
+        logger.error(f"Error analyzing code: {str(e)}")
+        return {"success": False, "error": str(e)}
 
 @app.post("/conversation", tags=["Conversation"])
 async def manage_conversation(request: ConversationRequest):

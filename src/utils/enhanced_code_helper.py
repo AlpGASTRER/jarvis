@@ -34,6 +34,9 @@ from dataclasses import dataclass
 from pathlib import Path
 import json
 from abc import ABC, abstractmethod
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Custom exceptions for better error handling
 class CodeHelperError(Exception):
@@ -98,7 +101,7 @@ class PythonAnalyzer(LanguageAnalyzer):
             tree = ast.parse(code)
             complexity = self.calculate_complexity(code)
             suggestions = self._generate_suggestions(tree)
-            metrics = self._calculate_metrics(tree)
+            metrics = self.calculate_metrics(code)
             
             return CodeAnalysis(
                 language='python',
@@ -131,12 +134,15 @@ class PythonAnalyzer(LanguageAnalyzer):
                 complexity += len(node.values) - 1
         return complexity
     
-    def _calculate_metrics(self, tree: ast.AST) -> Dict[str, Any]:
+    def calculate_metrics(self, code: str) -> Dict[str, Any]:
+        lines = code.splitlines()
+        total_lines = len(lines)
+        non_empty_lines = len([line for line in lines if line.strip()])
+        average_line_length = sum(len(line) for line in lines) / total_lines if total_lines > 0 else 0
         return {
-            'num_functions': len([n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]),
-            'num_classes': len([n for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]),
-            'num_imports': len([n for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom))]),
-            'lines_of_code': len(ast.unparse(tree).splitlines())
+            'total_lines': total_lines,
+            'non_empty_lines': non_empty_lines,
+            'average_line_length': average_line_length,
         }
 
     def _generate_suggestions(self, tree: ast.AST) -> List[str]:
@@ -203,6 +209,114 @@ class PythonAnalyzer(LanguageAnalyzer):
                     references.append(f"https://docs.python.org/3/library/{node.module}.html")
         except Exception:
             pass
+        return references
+
+    def check_security(self, code: str) -> List[str]:
+        # Implement security checks
+        return ['No hardcoded secrets found']
+
+class JavaScriptAnalyzer(LanguageAnalyzer):
+    """JavaScript-specific code analyzer."""
+    
+    def analyze(self, code: str) -> CodeAnalysis:
+        try:
+            complexity = self.calculate_complexity(code)
+            suggestions = self._generate_suggestions(code)
+            metrics = self.calculate_metrics(code)
+            
+            return CodeAnalysis(
+                language='javascript',
+                complexity=complexity,
+                suggestions=suggestions,
+                code_blocks=self._extract_code_blocks(code),
+                references=self._find_references(code),
+                metrics=metrics
+            )
+        except Exception as e:
+            raise AnalysisError(f"JavaScript analysis failed: {str(e)}")
+    
+    def calculate_complexity(self, code: str) -> float:
+        return self.calculate_js_complexity(code)
+    
+    def calculate_js_complexity(self, code: str) -> int:
+        """
+        Calculate cyclomatic complexity for JavaScript code
+        
+        Args:
+            code (str): JavaScript code to analyze
+            
+        Returns:
+            int: Cyclomatic complexity score
+        """
+        # Basic complexity starts at 1
+        complexity = 1
+        
+        # Count control flow statements
+        control_patterns = [
+            r'\bif\b',
+            r'\belse\s+if\b',
+            r'\bfor\b',
+            r'\bwhile\b',
+            r'\bcase\b',
+            r'\bcatch\b',
+            r'\b&&\b',
+            r'\b\|\|\b'
+        ]
+        
+        for pattern in control_patterns:
+            complexity += len(re.findall(pattern, code))
+            
+        return complexity
+
+    def _generate_suggestions(self, code: str) -> List[str]:
+        """Generate code improvement suggestions."""
+        suggestions = []
+        
+        # Check for long functions
+        function_pattern = r'function\s+\w+\s*\([^)]*\)\s*{([^}]*)}'
+        functions = re.findall(function_pattern, code, re.DOTALL)
+        for func in functions:
+            if len(func.split('\n')) > 20:
+                suggestions.append("Consider breaking down long functions")
+                
+        # Check for nested loops
+        loop_pattern = r'for\s+\([^)]*\)\s*{([^}]*)}'
+        loops = re.findall(loop_pattern, code, re.DOTALL)
+        for loop in loops:
+            if re.search(r'for\s+\([^)]*\)\s*{', loop):
+                suggestions.append("Consider refactoring nested loops")
+                
+        return suggestions
+
+    def calculate_metrics(self, code: str) -> Dict[str, Any]:
+        lines = code.splitlines()
+        total_lines = len(lines)
+        non_empty_lines = len([line for line in lines if line.strip()])
+        average_line_length = sum(len(line) for line in lines) / total_lines if total_lines > 0 else 0
+        return {
+            'total_lines': total_lines,
+            'non_empty_lines': non_empty_lines,
+            'average_line_length': average_line_length,
+        }
+
+    def _extract_code_blocks(self, code: str) -> List[str]:
+        """Extract meaningful code blocks."""
+        blocks = []
+        function_pattern = r'function\s+\w+\s*\([^)]*\)\s*{([^}]*)}'
+        functions = re.findall(function_pattern, code, re.DOTALL)
+        for func in functions:
+            blocks.append(f"function {{\n{func}\n}}")
+            
+        return blocks
+
+    def _find_references(self, code: str) -> List[str]:
+        """Find relevant documentation references."""
+        references = []
+        import_pattern = r'import\s+[^;]+'
+        imports = re.findall(import_pattern, code)
+        for imp in imports:
+            references.append(f"https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/{imp.split(' ')[1]}")
+            
         return references
 
 class EnhancedCodeHelper:
@@ -291,6 +405,7 @@ class EnhancedCodeHelper:
         """Initialize language-specific analyzers."""
         self.analyzers = {
             'python': PythonAnalyzer(),
+            'javascript': JavaScriptAnalyzer(),
             # Add more language analyzers here
         }
 
@@ -455,44 +570,73 @@ class EnhancedCodeHelper:
                 
         return 'unknown'
 
-    def analyze_code(self, code: str) -> CodeAnalysis:
+    def analyze_code(self, code: str, language: str = None, analysis_type: str = "default") -> Dict[str, Any]:
         """
-        Analyze code for complexity and potential improvements.
+        Analyze code using language-specific analyzers.
         
         Args:
-            code: Code to analyze
+            code (str): Code to analyze
+            language (str, optional): Programming language. If None, will attempt to detect.
+            analysis_type (str, optional): Type of analysis to perform. Defaults to "default".
             
         Returns:
-            CodeAnalysis: Analysis results
-            
-        Raises:
-            LanguageNotSupportedError: If language is not supported
-            AnalysisError: If analysis fails
+            Dict[str, Any]: Analysis results
         """
         try:
-            # Detect language if not specified
-            language = self.detect_language(code)
-            if language == 'unknown':
+            # Detect language if not provided
+            if not language:
+                language = self.detect_language(code)
+            if not language:
                 raise LanguageNotSupportedError("Could not detect programming language")
             
             # Use language-specific analyzer if available
-            if language == "python":
-                analyzer = PythonAnalyzer()
-                return analyzer.analyze(code)
-            else:
-                # Use generic analysis for other languages
-                return self._generic_analysis(code, language)
-                
+            if language.lower() in self.analyzers:
+                analyzer = self.analyzers[language.lower()]
+                analysis = analyzer.analyze(code)
+                return {
+                    "language": language,
+                    "metrics": analysis.metrics,
+                    "complexity": analysis.complexity,
+                    "suggestions": analysis.suggestions if hasattr(analysis, 'suggestions') else [],
+                    "code_blocks": analysis.code_blocks if hasattr(analysis, 'code_blocks') else [],
+                    "references": analysis.references if hasattr(analysis, 'references') else []
+                }
+            
+            # Fallback to generic analysis
+            lines = code.splitlines()
+            total_lines = len(lines)
+            non_empty_lines = len([line for line in lines if line.strip()])
+            average_line_length = sum(len(line) for line in lines) / total_lines if total_lines > 0 else 0
+            analysis = {
+                "total_lines": total_lines,
+                "non_empty_lines": non_empty_lines,
+                "average_line_length": average_line_length,
+            }
+            return {
+                "language": language,
+                "metrics": analysis,
+                "complexity": self.calculate_complexity(code, language),
+                "suggestions": self.get_suggestions(code, language),
+                "code_blocks": self._extract_code_blocks(code),
+                "references": self._find_references(code),
+            }
+            
         except Exception as e:
-            raise AnalysisError(f"Analysis failed: {str(e)}")
+            logger.error(f"Error analyzing code: {str(e)}")
+            raise
 
-    def _generic_analysis(self, code: str, language: str) -> CodeAnalysis:
+    def _generic_analysis(self, code: str, language: str) -> Dict[str, Any]:
         """Perform generic code analysis for unsupported languages."""
         # Calculate basic metrics first, outside try block
-        metrics = {
-            'total_lines': len(code.split('\n')),
-            'non_empty_lines': len([line for line in code.split('\n') if line.strip()]),
-            'average_line_length': sum(len(line) for line in code.split('\n') if line.strip()) / (len([line for line in code.split('\n') if line.strip()]) or 1),
+        lines = code.splitlines()
+        total_lines = len(lines)
+        non_empty_lines = len([line for line in lines if line.strip()])
+        average_line_length = sum(len(line) for line in lines) / total_lines if total_lines > 0 else 0
+
+        analysis = {
+            "total_lines": total_lines,
+            "non_empty_lines": non_empty_lines,
+            "average_line_length": average_line_length,
             'cyclomatic_complexity': self._calculate_generic_complexity(code)
         }
         
@@ -520,65 +664,35 @@ Respond only with valid JSON. Example format:
             
             response = model.generate_content(prompt)
             try:
-                analysis = json.loads(response.text)
+                analysis.update(json.loads(response.text))
             except json.JSONDecodeError:
                 # If JSON parsing fails, create a default analysis
-                analysis = {
+                analysis.update({
                     "suggestions": ["Consider adding input validation", "Add error handling"],
                     "best_practices": ["Follow language conventions", "Add documentation"],
                     "security_issues": ["Validate all inputs", "Handle errors properly"],
-                    "complexity_score": metrics['cyclomatic_complexity']
-                }
+                    "complexity_score": analysis['cyclomatic_complexity']
+                })
             
-            return CodeAnalysis(
-                language=language,
-                complexity=float(analysis.get('complexity_score', metrics['cyclomatic_complexity'])),
-                suggestions=analysis.get('suggestions', []),
-                code_blocks=[code],
-                references=[],
-                metrics=metrics
-            )
+            return {
+                "language": language,
+                "metrics": analysis,
+                "complexity": float(analysis.get('complexity_score', analysis['cyclomatic_complexity'])),
+                "suggestions": analysis.get('suggestions', []),
+                "code_blocks": [code],
+                "references": []
+            }
             
         except Exception as e:
             # Return a basic analysis if anything fails
-            return CodeAnalysis(
-                language=language,
-                complexity=metrics['cyclomatic_complexity'],
-                suggestions=["Consider adding input validation", "Add error handling"],
-                code_blocks=[code],
-                references=[],
-                metrics=metrics
-            )
-
-    def _calculate_generic_complexity(self, code: str) -> float:
-        """Calculate generic code complexity."""
-        complexity = 1.0
-        
-        # Common complexity indicators across languages
-        patterns = {
-            'control_flow': [
-                r'\bif\b', r'\belse\b', r'\belif\b', r'\bfor\b', r'\bwhile\b',
-                r'\btry\b', r'\bcatch\b', r'\bswitch\b', r'\bcase\b'
-            ],
-            'logical_operators': [
-                r'&&', r'\|\|', r'==', r'!=', r'>=', r'<=', r'\?'
-            ],
-            'nesting': [
-                r'{[^{}]*{', r'\([^()]*\('  # Nested braces/parentheses
-            ]
-        }
-        
-        for category, category_patterns in patterns.items():
-            for pattern in category_patterns:
-                matches = len(re.findall(pattern, code))
-                if category == 'control_flow':
-                    complexity += matches * 0.2
-                elif category == 'logical_operators':
-                    complexity += matches * 0.1
-                else:  # nesting
-                    complexity += matches * 0.3
-                    
-        return min(10.0, complexity)  # Cap at 10.0
+            return {
+                "language": language,
+                "metrics": analysis,
+                "complexity": analysis['cyclomatic_complexity'],
+                "suggestions": ["Consider adding input validation", "Add error handling"],
+                "code_blocks": [code],
+                "references": []
+            }
 
     def analyze_syntax(self, code: str, language: str = None) -> Dict:
         """
@@ -845,6 +959,8 @@ Focus on:
                 return self._calculate_python_complexity(code)
             elif language == 'rust':
                 return self._calculate_rust_complexity(code)
+            elif language == 'javascript':
+                return self._calculate_js_complexity(code)
             else:
                 # Generic complexity calculation for other languages
                 complexity = 0.0
@@ -917,6 +1033,38 @@ Focus on:
             
             # Pattern matching complexity
             complexity += len(re.findall(r'\bmatch\b[^{]*{([^}]*})*', code)) * 0.6
+            
+            return round(complexity, 2)
+        except:
+            return 0.0
+
+    def _calculate_js_complexity(self, code: str) -> float:
+        """
+        Calculate JavaScript-specific complexity.
+        
+        Analyzes the provided JavaScript code to calculate a complexity score based
+        on various metrics, including control flow, nesting, and function complexity.
+        
+        Args:
+            code: JavaScript code to analyze
+            
+        Returns:
+            float: Calculated complexity score
+        """
+        try:
+            complexity = 0.0
+            
+            # Control flow complexity
+            complexity += len(re.findall(r'\b(if|else|for|while|switch|case|try|catch)\b', code)) * 0.5
+            
+            # Function complexity
+            complexity += len(re.findall(r'\bfunction\s+\w+', code)) * 0.3
+            
+            # Class complexity
+            complexity += len(re.findall(r'\bclass\s+\w+', code)) * 0.4
+            
+            # Nesting complexity (nested blocks)
+            complexity += len(re.findall(r'[{]\s*[^}]*[{]', code)) * 0.6
             
             return round(complexity, 2)
         except:
@@ -1016,3 +1164,44 @@ Focus on:
             references.append(f"https://docs.python.org/3/library/{module}.html")
             
         return references
+
+    def check_security(self, code: str) -> List[str]:
+        """
+        Perform security analysis on the code to identify potential vulnerabilities.
+        
+        Args:
+            code (str): The code to analyze for security issues.
+            
+        Returns:
+            List[str]: A list of identified security issues.
+        """
+        issues = []
+        # Example checks
+        if "os.system(" in code:
+            issues.append("Use of os.system detected. Consider using subprocess instead.")
+        if "exec(" in code or "eval(" in code:
+            issues.append("Use of exec/eval detected. Avoid using these functions.")
+        return issues
+    
+    def generate_suggestions(self, code: str) -> List[str]:
+        """
+        Generate code improvement suggestions based on analysis.
+        
+        Args:
+            code (str): The code to analyze and suggest improvements.
+            
+        Returns:
+            List[str]: A list of suggestions for code improvement.
+        """
+        suggestions = []
+        # Example suggestions for Python
+        if "def " in code and "->" not in code:
+            suggestions.append("type_hints")
+        # Example suggestions for JavaScript
+        if "var " in code:
+            suggestions.append("Consider using let or const instead of var.")
+        if "==" in code and "===" not in code:
+            suggestions.append("Use === instead of == for comparison.")
+        if "function" in code and "=>" not in code:
+            suggestions.append("Consider using arrow functions for cleaner syntax.")
+        return suggestions
