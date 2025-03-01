@@ -165,3 +165,19 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Google Gemini AI for natural language processing
 - FastAPI for the web framework
 - Wit.ai for voice recognition
+
+## Deploying to Render (Free Hosting)
+
+You can deploy this project for free on [Render](https://render.com/):
+
+1. Sign up for a free Render account
+2. Connect your GitHub repository
+3. Click "New Web Service"
+4. Select your repository
+5. Render will automatically detect the configuration from `render.yaml`
+6. Add your environment variables:
+   - `WIT_EN_KEY`: Your Wit.ai API key
+   - `GOOGLE_API_KEY`: Your Google API key (Gemini)
+7. Click "Create Web Service"
+
+The deployment will start automatically, and you'll receive a URL for your API when it's complete.
