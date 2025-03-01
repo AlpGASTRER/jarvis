@@ -1,0 +1,23 @@
+{
+  "install": "pip3 install --user -r requirements-glitch.txt",
+  "start": "python3 api.py",
+  "watch": {
+    "ignore": [
+      "\\.pyc$",
+      "__pycache__",
+      "node_modules",
+      "^\\.git"
+    ],
+    "install": {
+      "include": [
+        "^requirements-glitch\\.txt$"
+      ]
+    },
+    "restart": {
+      "include": [
+        "\\.py$"
+      ]
+    },
+    "throttle": 1000
+  }
+}
