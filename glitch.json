@@ -1,5 +1,5 @@
 {
-  "install": "pip3 install --user -r requirements-glitch.txt",
+  "install": "python3 -m pip install --user -r requirements-glitch.txt",
   "start": "python3 api.py",
   "watch": {
     "ignore": [
