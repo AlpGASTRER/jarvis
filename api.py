@@ -36,6 +36,7 @@ from src.utils.enhanced_code_helper import EnhancedCodeHelper
 from src.utils.voice_processor import VoiceProcessor
 import os
 import logging
+import platform
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -420,6 +421,22 @@ async def text_to_speech(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/health", tags=["System"])
+async def health_check():
+    """
+    Health check endpoint for monitoring services.
+    Returns basic system information and status.
+    """
+    return {
+        "status": "healthy",
+        "api_version": "1.0.0",
+        "timestamp": time.time(),
+        "system_info": {
+            "python_version": platform.python_version(),
+            "platform": platform.platform()
+        }
+    }
 
 @app.websocket("/ws/voice")
 async def websocket_voice(websocket: WebSocket):

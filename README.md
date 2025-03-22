@@ -168,16 +168,29 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Deploying to Render (Free Hosting)
 
-You can deploy this project for free on [Render](https://render.com/):
+This project is configured for easy deployment on Render's free tier:
 
-1. Sign up for a free Render account
-2. Connect your GitHub repository
-3. Click "New Web Service"
-4. Select your repository
-5. Render will automatically detect the configuration from `render.yaml`
-6. Add your environment variables:
+### Prerequisites
+- A Render account (free at [render.com](https://render.com/))
+- Your Wit.ai API key
+- Your Google API key (for Gemini)
+
+### Deployment Steps
+1. Fork or push this repository to your GitHub account
+2. Sign in to Render and select "New Web Service"
+3. Connect your GitHub repository
+4. Select the repository and the branch you want to deploy
+5. Render will automatically detect the `render.yaml` configuration
+6. Configure the following environment variables:
    - `WIT_EN_KEY`: Your Wit.ai API key
-   - `GOOGLE_API_KEY`: Your Google API key (Gemini)
+   - `GOOGLE_API_KEY`: Your Google API key for Gemini
 7. Click "Create Web Service"
 
-The deployment will start automatically, and you'll receive a URL for your API when it's complete.
+### Verify Your Deployment
+Once deployed, test your API using:
+- GET request to `https://your-service-name.onrender.com/` for API information
+- POST request to `https://your-service-name.onrender.com/text` to test text processing
+
+### Notes
+- The free tier may have cold starts (initial request may be slow)
+- Your service will automatically scale down after periods of inactivity

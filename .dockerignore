@@ -1,7 +1,14 @@
-# Environment variables
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Environment
 .env
-.env.*
 *.env
+.venv
+venv/
+ENV/
 
 # Python
 __pycache__/
@@ -9,10 +16,6 @@ __pycache__/
 *$py.class
 *.so
 .Python
-env/
-venv/
-ENV/
-.venv/
 build/
 develop-eggs/
 dist/
@@ -28,20 +31,13 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
 .pytest_cache/
 .coverage
 htmlcov/
-.tox/
 
-# Debug/test files
-debug_voice.py
-test_mic.py
-test_voice.py
-test_wit.py
-tests/code_helper.py
-*.log
+# Logs
 logs/
+*.log
 
 # IDE specific files
 .idea/
@@ -49,18 +45,12 @@ logs/
 *.swp
 *.swo
 *~
-.project
-.pydevproject
-.settings/
 
 # OS specific files
 .DS_Store
 Thumbs.db
-*.bak
-*.tmp
-desktop.ini
 
-# Deployment specific
-__pycache__
-node_modules/
-.vercel
+# Project specific
+tests/
+*.md
+!README.md

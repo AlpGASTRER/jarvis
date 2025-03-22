@@ -1,0 +1,23 @@
+name: jarvis-ai-assistant
+region: fra
+services:
+- name: jarvis-api
+  dockerfile_path: Dockerfile
+  source_dir: /
+  git:
+    repo_clone_url: https://github.com/YOUR_USERNAME/jarvis.git
+    branch: main
+  http_port: 8080
+  instance_count: 1
+  instance_size_slug: basic-xs
+  routes:
+  - path: /
+  envs:
+  - key: WIT_EN_KEY
+    scope: RUN_TIME
+    value: ${WIT_EN_KEY}
+    type: SECRET
+  - key: GOOGLE_API_KEY
+    scope: RUN_TIME
+    value: ${GOOGLE_API_KEY}
+    type: SECRET
