@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     python3-dev \
     build-essential \
+    espeak \
+    libespeak-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
