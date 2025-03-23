@@ -12,6 +12,7 @@ Key Features:
 - Real-time voice interaction
 - Conversation management
 - Customizable TTS voices
+- Gemini Live API integration for high-quality voice chat
 
 Dependencies:
 - FastAPI: Web framework
@@ -24,6 +25,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, WebSocket, Query, Depends, Header, WebSocketDisconnect, File, Form, UploadFile, Request, Response
 from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List, Union
 import json
@@ -34,6 +36,7 @@ import wave
 import base64
 from src.utils.enhanced_code_helper import EnhancedCodeHelper
 from src.utils.voice_processor import VoiceProcessor
+from src.routes.live_voice_routes import router as live_voice_router
 import os
 import logging
 import platform
@@ -59,6 +62,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include the Live Voice API routes
+app.include_router(live_voice_router)
+
+# Mount static files directory
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Initialize processors
 voice_processor = VoiceProcessor()
