@@ -9,7 +9,7 @@ SpeechRecognition==3.10.0
 PyAudio==0.2.13
 pyttsx3==2.90
 webrtcvad==2.0.10
-torch==2.1.0  # Required by noisereduce
+torch==2.1.0+cpu -f https://download.pytorch.org/whl/torch_stable.html  # CPU-only version
 
 # API dependencies - required for serving
 fastapi==0.104.1
