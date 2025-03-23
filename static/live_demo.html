@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jarvis Live Voice Demo</title>
+    <title>Jarvis AI Assistant Demo</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -51,18 +51,6 @@
             background-color: #95a5a6;
             cursor: not-allowed;
         }
-        #recordButton {
-            background-color: #e74c3c;
-        }
-        #recordButton.recording {
-            background-color: #c0392b;
-            animation: pulse 1.5s infinite;
-        }
-        @keyframes pulse {
-            0% { opacity: 1; }
-            50% { opacity: 0.7; }
-            100% { opacity: 1; }
-        }
         #textInput {
             width: 100%;
             padding: 10px;
@@ -93,14 +81,6 @@
             background-color: #ebf5fb;
             margin-right: 20%;
         }
-        .voice-selector {
-            margin-top: 20px;
-        }
-        select {
-            padding: 8px;
-            border-radius: 5px;
-            border: 1px solid #ddd;
-        }
         .status {
             text-align: center;
             margin-top: 10px;
@@ -110,24 +90,13 @@
     </style>
 </head>
 <body>
-    <h1>Jarvis Live Voice Demo</h1>
+    <h1>Jarvis AI Assistant Demo</h1>
     <div class="container">
         <div class="controls">
             <input type="text" id="textInput" placeholder="Type your message here...">
             <div class="button-row">
                 <button id="sendButton">Send Text</button>
-                <button id="recordButton">Start Recording</button>
                 <button id="clearButton">Clear Chat</button>
-            </div>
-            <div class="voice-selector">
-                <label for="voiceSelect">Voice: </label>
-                <select id="voiceSelect">
-                    <option value="Aoede">Aoede</option>
-                    <option value="Charon">Charon</option>
-                    <option value="Fenrir">Fenrir</option>
-                    <option value="Kore" selected>Kore</option>
-                    <option value="Puck">Puck</option>
-                </select>
             </div>
             <div class="status" id="status">Ready</div>
         </div>
@@ -138,19 +107,11 @@
         document.addEventListener('DOMContentLoaded', function() {
             const textInput = document.getElementById('textInput');
             const sendButton = document.getElementById('sendButton');
-            const recordButton = document.getElementById('recordButton');
             const clearButton = document.getElementById('clearButton');
             const conversation = document.getElementById('conversation');
-            const voiceSelect = document.getElementById('voiceSelect');
             const statusElement = document.getElementById('status');
             
             let socket = null;
-            let mediaRecorder = null;
-            let audioChunks = [];
-            let isRecording = false;
-            let audioContext = null;
-            let audioQueue = [];
-            let isPlaying = false;
             
             // Connect to WebSocket
             function connectWebSocket() {
@@ -158,29 +119,23 @@
                 socket = new WebSocket(`ws://${window.location.host}/live/ws/${clientId}`);
                 
                 socket.onopen = function() {
-                    updateStatus('Connected to Jarvis Live API');
+                    updateStatus('Connected to Jarvis AI Assistant');
                 };
                 
                 socket.onmessage = function(event) {
                     const data = JSON.parse(event.data);
                     
                     if (data.type === 'connection_established') {
-                        updateStatus('Connection established. Voice: ' + data.voice);
-                        voiceSelect.value = data.voice;
+                        updateStatus('Connection established');
                     } 
                     else if (data.type === 'text') {
                         appendAssistantMessage(data.content);
-                    } 
-                    else if (data.type === 'audio') {
-                        // Decode and play audio
-                        const audioData = base64ToArrayBuffer(data.content);
-                        queueAudio(audioData);
                     } 
                     else if (data.type === 'complete') {
                         updateStatus('Response complete');
                     } 
                     else if (data.type === 'config_update') {
-                        updateStatus('Voice updated to: ' + data.voice);
+                        updateStatus('Configuration updated');
                     }
                 };
                 
@@ -195,107 +150,6 @@
                 };
             }
             
-            // Initialize audio context
-            function initAudioContext() {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            }
-            
-            // Queue audio for playback
-            function queueAudio(audioData) {
-                audioQueue.push(audioData);
-                if (!isPlaying) {
-                    playNextAudio();
-                }
-            }
-            
-            // Play next audio in queue
-            function playNextAudio() {
-                if (audioQueue.length === 0) {
-                    isPlaying = false;
-                    return;
-                }
-                
-                isPlaying = true;
-                const audioData = audioQueue.shift();
-                
-                audioContext.decodeAudioData(audioData, function(buffer) {
-                    const source = audioContext.createBufferSource();
-                    source.buffer = buffer;
-                    source.connect(audioContext.destination);
-                    
-                    source.onended = function() {
-                        playNextAudio();
-                    };
-                    
-                    source.start(0);
-                }, function(error) {
-                    console.error('Error decoding audio data', error);
-                    playNextAudio();
-                });
-            }
-            
-            // Convert base64 to ArrayBuffer
-            function base64ToArrayBuffer(base64) {
-                const binaryString = window.atob(base64);
-                const len = binaryString.length;
-                const bytes = new Uint8Array(len);
-                for (let i = 0; i < len; i++) {
-                    bytes[i] = binaryString.charCodeAt(i);
-                }
-                return bytes.buffer;
-            }
-            
-            // Start recording audio
-            async function startRecording() {
-                if (isRecording) return;
-                
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                    mediaRecorder = new MediaRecorder(stream);
-                    audioChunks = [];
-                    
-                    mediaRecorder.ondataavailable = function(event) {
-                        audioChunks.push(event.data);
-                    };
-                    
-                    mediaRecorder.onstop = async function() {
-                        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-                        const reader = new FileReader();
-                        
-                        reader.onloadend = function() {
-                            const base64Audio = reader.result.split(',')[1];
-                            if (socket && socket.readyState === WebSocket.OPEN) {
-                                socket.send(JSON.stringify({ audio: base64Audio }));
-                                appendUserMessage('[Voice message]');
-                                updateStatus('Processing voice input...');
-                            }
-                        };
-                        
-                        reader.readAsDataURL(audioBlob);
-                    };
-                    
-                    mediaRecorder.start();
-                    isRecording = true;
-                    recordButton.textContent = 'Stop Recording';
-                    recordButton.classList.add('recording');
-                    updateStatus('Recording...');
-                } catch (error) {
-                    console.error('Error accessing microphone:', error);
-                    updateStatus('Error accessing microphone');
-                }
-            }
-            
-            // Stop recording audio
-            function stopRecording() {
-                if (!isRecording) return;
-                
-                mediaRecorder.stop();
-                isRecording = false;
-                recordButton.textContent = 'Start Recording';
-                recordButton.classList.remove('recording');
-                updateStatus('Processing recording...');
-            }
-            
             // Send text message
             function sendTextMessage() {
                 const text = textInput.value.trim();
@@ -308,15 +162,6 @@
                     updateStatus('Processing...');
                 } else {
                     updateStatus('Not connected to server');
-                }
-            }
-            
-            // Change voice
-            function changeVoice() {
-                const voice = voiceSelect.value;
-                if (socket && socket.readyState === WebSocket.OPEN) {
-                    socket.send(JSON.stringify({ config: { voice: voice } }));
-                    updateStatus('Changing voice to ' + voice + '...');
                 }
             }
             
@@ -367,28 +212,10 @@
                 }
             });
             
-            recordButton.addEventListener('click', function() {
-                if (isRecording) {
-                    stopRecording();
-                } else {
-                    startRecording();
-                }
-            });
-            
             clearButton.addEventListener('click', clearChat);
             
-            voiceSelect.addEventListener('change', changeVoice);
-            
             // Initialize
-            initAudioContext();
             connectWebSocket();
-            
-            // Handle page visibility changes
-            document.addEventListener('visibilitychange', function() {
-                if (document.visibilityState === 'hidden' && isRecording) {
-                    stopRecording();
-                }
-            });
         });
     </script>
 </body>
