@@ -9,6 +9,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     portaudio19-dev \
     libpulse-dev \
     curl \
+    python3-dev \
+    build-essential \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
