@@ -1,5 +1,5 @@
 # Core dependencies - essential for production
-google-generativeai>=0.4.0  # Updated for Live API support
+google-generativeai>=0.7.0  # Updated for Live API support with v1alpha
 python-dotenv==1.0.0
 
 # Audio processing - required for voice features

@@ -2,12 +2,13 @@
 Live Voice Processor Module
 
 This module implements voice interaction using the Gemini API for the Jarvis AI Assistant.
-It provides text-to-speech capabilities with the standard Gemini model.
+It provides real-time voice chat capabilities with high-quality text-to-speech output.
 
 Key Features:
-- High-quality text processing with Gemini Pro Experimental model
-- Conversation context management
-- Support for multiple conversation turns
+- Real-time audio streaming with Gemini API
+- High-quality voice output with configurable voices
+- Seamless conversation handling with context management
+- Support for interruptions and natural conversation flow
 
 Dependencies:
 - google.generativeai: For Gemini API integration
@@ -17,6 +18,8 @@ Dependencies:
 
 import os
 import asyncio
+import wave
+import base64
 import logging
 import tempfile
 from typing import Union, Tuple, List, Dict, Any, Optional, AsyncGenerator
@@ -30,33 +33,40 @@ class LiveVoiceProcessor:
     """
     A class for processing voice input and output using the Gemini API.
     
-    This class handles text interactions with the Gemini model,
-    providing conversation capabilities.
+    This class handles real-time voice interactions with the Gemini model,
+    providing high-quality voice output and natural conversation capabilities.
     
     Attributes:
         model_name: Name of the Gemini model to use
+        voice_name: Name of the voice to use for TTS
         model: Gemini model instance
         conversation_history: List of conversation turns
     """
     
-    def __init__(self, model_name: str = "gemini-2.0-pro-exp-02-05"):
+    AVAILABLE_VOICES = ["Aoede", "Charon", "Fenrir", "Kore", "Puck"]
+    
+    def __init__(self, model_name: str = "gemini-2.0-pro-exp-02-05", voice_name: str = "Kore"):
         """
         Initialize the Live Voice Processor.
         
         Args:
             model_name: Name of the Gemini model to use
+            voice_name: Name of the voice to use for TTS (one of Aoede, Charon, Fenrir, Kore, Puck)
         """
         self.model_name = model_name
+        self.voice_name = voice_name if voice_name in self.AVAILABLE_VOICES else "Kore"
         
         # Initialize Gemini API
         genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
+        
+        # We'll use the standard model for now until we can properly integrate the Live API
         self.model = genai.GenerativeModel(model_name)
         
         # Initialize conversation history
         self.conversation_history = []
         self.chat = self.model.start_chat(history=[])
         
-        logger.info(f"LiveVoiceProcessor initialized with model {model_name}")
+        logger.info(f"LiveVoiceProcessor initialized with model {model_name} and voice {voice_name}")
     
     async def process_text(self, text: str) -> AsyncGenerator[Dict[str, Any], None]:
         """

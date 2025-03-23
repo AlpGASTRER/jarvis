@@ -12,10 +12,9 @@ Key Features:
 
 import os
 import asyncio
-import base64
+import json
 import logging
 from typing import Dict, Any, List, Optional
-import json
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, HTTPException, Depends, Query
 from fastapi.responses import JSONResponse
