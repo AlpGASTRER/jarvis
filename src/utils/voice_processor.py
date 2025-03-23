@@ -51,7 +51,7 @@ class VoiceProcessor:
         # Initialize Gemini AI once
         genai.configure(api_key=os.getenv('GOOGLE_API_KEY'))
         self.model = genai.GenerativeModel('gemini-2.0-pro-exp-02-05')  # Using experimental Pro model
-        self.audio_model = genai.GenerativeModel('gemini-2.0-flash-exp')  # Using experimental Flash model
+        self.audio_model = genai.GenerativeModel('gemini-2.0-pro-exp-02-05')  # Using same experimental Pro model for audio
         
         # Initialize chat storage
         self.chats = {}  # conversation_id -> chat object
