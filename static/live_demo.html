@@ -85,6 +85,31 @@
             color: #333;
             border-bottom-left-radius: 5px;
         }
+        .system-message {
+            align-self: center;
+            background-color: #ccc;
+            color: #333;
+            border-bottom-left-radius: 5px;
+            border-bottom-right-radius: 5px;
+        }
+        .audio-controls {
+            display: flex;
+            align-items: center;
+            margin-top: 8px;
+        }
+        .play-button {
+            background-color: #2ecc71;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 12px;
+        }
         .chat-input {
             display: flex;
             padding: 15px;
@@ -134,6 +159,15 @@
         }
         .control-button:hover {
             background-color: #34495e;
+        }
+        .control-button.recording {
+            background-color: #e74c3c;
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
         }
         select {
             padding: 8px;
@@ -206,7 +240,18 @@
         
         <div class="controls">
             <div class="control-group">
+                <button id="record-btn" class="control-button" disabled>
+                    <i class="fas fa-microphone"></i> Record
+                </button>
                 <button id="clear-history-btn" class="control-button" disabled>Clear History</button>
+                <select id="voice-select" disabled>
+                    <option value="Kore">Kore Voice</option>
+                    <option value="Aoede">Aoede Voice</option>
+                    <option value="Charon">Charon Voice</option>
+                    <option value="Fenrir">Fenrir Voice</option>
+                    <option value="Puck">Puck Voice</option>
+                </select>
+                <button id="apply-voice-btn" class="control-button" disabled>Apply Voice</button>
             </div>
         </div>
     </div>
@@ -220,77 +265,54 @@
         const chatMessages = document.getElementById('chat-messages');
         const messageInput = document.getElementById('message-input');
         const sendBtn = document.getElementById('send-btn');
+        const voiceSelect = document.getElementById('voice-select');
+        const applyVoiceBtn = document.getElementById('apply-voice-btn');
+        const recordBtn = document.getElementById('record-btn');
         const clearHistoryBtn = document.getElementById('clear-history-btn');
         const typingIndicator = document.getElementById('typing-indicator');
-        
+
         // WebSocket connection
         let socket = null;
-        let clientId = 'client_' + Math.random().toString(36).substring(2, 15);
-        
-        // Connect to WebSocket
+        let clientId = 'web-client-' + Math.random().toString(36).substring(2, 10);
+        let connected = false;
+
+        // Audio recording
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
+
+        // Initialize
         connectBtn.addEventListener('click', () => {
-            // Create WebSocket connection
-            socket = new WebSocket(`ws://${window.location.host}/live/ws/${clientId}`);
-            
-            // Connection opened
-            socket.addEventListener('open', (event) => {
-                updateConnectionStatus(true);
-            });
-            
-            // Listen for messages
-            socket.addEventListener('message', (event) => {
-                const response = JSON.parse(event.data);
-                
-                // Handle different response types
-                if (response.type === 'connection_established') {
-                    console.log('Connection established', response);
-                } else if (response.type === 'text') {
-                    // Show typing indicator
-                    typingIndicator.style.display = 'block';
-                    
-                    // Add message to chat
-                    addMessage(response.content, 'assistant');
-                } else if (response.type === 'complete') {
-                    // Hide typing indicator
-                    typingIndicator.style.display = 'none';
-                } else if (response.type === 'config_update') {
-                    console.log('Config updated', response);
-                }
-            });
-            
-            // Connection closed
-            socket.addEventListener('close', (event) => {
-                updateConnectionStatus(false);
-            });
-            
-            // Connection error
-            socket.addEventListener('error', (event) => {
-                console.error('WebSocket error:', event);
-                updateConnectionStatus(false);
-            });
-        });
-        
-        // Disconnect from WebSocket
-        disconnectBtn.addEventListener('click', () => {
-            if (socket) {
-                socket.close();
-                socket = null;
+            // Connect to WebSocket
+            if (!socket || socket.readyState !== WebSocket.OPEN) {
+                connectToWebSocket();
             }
         });
-        
-        // Send message
+
+        disconnectBtn.addEventListener('click', () => {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                socket.close();
+            }
+        });
+
         sendBtn.addEventListener('click', () => {
             sendMessage();
         });
-        
-        // Send message on Enter key
-        messageInput.addEventListener('keypress', (event) => {
-            if (event.key === 'Enter') {
+
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
                 sendMessage();
             }
         });
-        
-        // Clear conversation history
+
+        recordBtn.addEventListener('click', () => {
+            if (!isRecording) {
+                startRecording();
+            } else {
+                stopRecording();
+            }
+        });
+
         clearHistoryBtn.addEventListener('click', () => {
             if (socket && socket.readyState === WebSocket.OPEN) {
                 socket.send(JSON.stringify({
@@ -298,64 +320,330 @@
                         clear_history: true
                     }
                 }));
-                
-                // Clear chat messages
-                while (chatMessages.firstChild) {
-                    if (chatMessages.firstChild.id !== 'typing-indicator') {
-                        chatMessages.removeChild(chatMessages.firstChild);
-                    }
-                }
+                addMessage('Conversation history cleared.', 'system');
             }
         });
-        
-        // Update connection status UI
+
+        applyVoiceBtn.addEventListener('click', () => {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                const voice = voiceSelect.value;
+                socket.send(JSON.stringify({
+                    config: {
+                        voice: voice
+                    }
+                }));
+                addMessage(`Voice changed to ${voice}.`, 'system');
+            }
+        });
+
+        // Functions
+        function connectToWebSocket() {
+            const host = window.location.hostname;
+            const port = window.location.port;
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${host}:${port}/live/ws/${clientId}`;
+
+            socket = new WebSocket(wsUrl);
+
+            socket.onopen = () => {
+                console.log('WebSocket connected');
+                connected = true;
+                updateConnectionStatus(true);
+            };
+
+            socket.onclose = () => {
+                console.log('WebSocket disconnected');
+                connected = false;
+                updateConnectionStatus(false);
+            };
+
+            socket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                connected = false;
+                updateConnectionStatus(false);
+                addMessage('Connection error. Please try again later.', 'system');
+            };
+
+            socket.onmessage = (event) => {
+                const message = JSON.parse(event.data);
+                console.log('Received message:', message);
+
+                // Handle different message types
+                switch (message.type) {
+                    case 'connection_established':
+                        handleConnectionEstablished(message);
+                        break;
+                    case 'text_chunk':
+                        handleTextChunk(message);
+                        break;
+                    case 'text':
+                        handleTextMessage(message);
+                        break;
+                    case 'audio':
+                        handleAudioMessage(message);
+                        break;
+                    case 'error':
+                        handleErrorMessage(message);
+                        break;
+                    case 'complete':
+                        handleCompleteMessage();
+                        break;
+                    case 'config_update':
+                        handleConfigUpdate(message);
+                        break;
+                    default:
+                        console.log('Unknown message type:', message.type);
+                        if (message.content) {
+                            addMessage(`Received (${message.type}): ${JSON.stringify(message.content)}`, 'system');
+                        }
+                }
+            };
+        }
+
+        function handleConnectionEstablished(message) {
+            // Update voice selector with available voices
+            if (message.available_voices) {
+                updateVoiceSelector(message.available_voices, message.voice);
+            }
+            addMessage(`Connected to Jarvis AI Assistant (Voice: ${message.voice})`, 'system');
+        }
+
+        function handleTextChunk(message) {
+            console.log('Received text chunk:', message.content);
+            
+            // Hide typing indicator if it's visible
+            typingIndicator.style.display = 'none';
+            
+            // Check if we need to append to an existing message or create a new one
+            const lastMessage = chatMessages.lastElementChild;
+            
+            if (lastMessage && lastMessage.classList.contains('assistant-message') && 
+                !lastMessage.dataset.complete) {
+                // Append to existing message
+                const messageText = lastMessage.querySelector('.message-text');
+                messageText.textContent += message.content;
+            } else {
+                // Create a new message
+                addMessage(message.content, 'assistant', false);
+            }
+        }
+
+        function handleTextMessage(message) {
+            // Hide typing indicator if it's visible
+            typingIndicator.style.display = 'none';
+            
+            // Check if we need to append to an existing message or create a new one
+            const lastMessage = chatMessages.lastElementChild;
+            
+            if (lastMessage && lastMessage.classList.contains('assistant-message') && 
+                !lastMessage.dataset.complete) {
+                // Append to existing message
+                const messageText = lastMessage.querySelector('.message-text');
+                messageText.textContent += message.content;
+            } else {
+                // Create a new message
+                addMessage(message.content, 'assistant');
+            }
+        }
+
+        function handleAudioMessage(message) {
+            if (message.content) {
+                // Get the last assistant message
+                const messages = document.querySelectorAll('.assistant-message');
+                if (messages.length > 0) {
+                    const lastMessage = messages[messages.length - 1];
+                    addAudioControls(lastMessage.id, message.content);
+                }
+            }
+        }
+
+        function handleErrorMessage(message) {
+            addMessage(`Error: ${message.content}`, 'system');
+            typingIndicator.style.display = 'none';
+        }
+
+        function handleCompleteMessage() {
+            // Mark the last assistant message as complete
+            const messages = document.querySelectorAll('.assistant-message');
+            if (messages.length > 0) {
+                const lastMessage = messages[messages.length - 1];
+                lastMessage.dataset.complete = 'true';
+            }
+            
+            typingIndicator.style.display = 'none';
+        }
+
+        function handleConfigUpdate(message) {
+            if (message.voice) {
+                addMessage(`Voice updated to: ${message.voice}`, 'system');
+            }
+            if (message.clear_history) {
+                addMessage('Conversation history cleared', 'system');
+            }
+        }
+
+        function startRecording() {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                addMessage('Audio recording is not supported in your browser.', 'system');
+                return;
+            }
+
+            navigator.mediaDevices.getUserMedia({ audio: true })
+                .then(stream => {
+                    audioChunks = [];
+                    mediaRecorder = new MediaRecorder(stream);
+                    
+                    mediaRecorder.ondataavailable = (event) => {
+                        if (event.data.size > 0) {
+                            audioChunks.push(event.data);
+                        }
+                    };
+                    
+                    mediaRecorder.onstop = () => {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                        sendAudioToServer(audioBlob);
+                        
+                        // Release microphone
+                        stream.getTracks().forEach(track => track.stop());
+                    };
+                    
+                    mediaRecorder.start();
+                    isRecording = true;
+                    recordBtn.textContent = 'Stop Recording';
+                    recordBtn.classList.add('recording');
+                    
+                    addMessage('Recording audio...', 'system');
+                })
+                .catch(error => {
+                    console.error('Error accessing microphone:', error);
+                    addMessage(`Error accessing microphone: ${error.message}`, 'system');
+                });
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && isRecording) {
+                mediaRecorder.stop();
+                isRecording = false;
+                recordBtn.textContent = 'Record Audio';
+                recordBtn.classList.remove('recording');
+                
+                addMessage('Processing audio...', 'system');
+                typingIndicator.style.display = 'flex';
+            }
+        }
+
+        function sendAudioToServer(audioBlob) {
+            if (socket && socket.readyState === WebSocket.OPEN) {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    const base64data = reader.result.split(',')[1];
+                    socket.send(JSON.stringify({
+                        audio: base64data
+                    }));
+                };
+                reader.readAsDataURL(audioBlob);
+            } else {
+                addMessage('Not connected to server. Cannot send audio.', 'system');
+            }
+        }
+
         function updateConnectionStatus(connected) {
             if (connected) {
                 statusDot.classList.remove('disconnected');
                 statusDot.classList.add('connected');
                 statusText.textContent = 'Connected';
-                
                 connectBtn.disabled = true;
                 disconnectBtn.disabled = false;
-                messageInput.disabled = false;
                 sendBtn.disabled = false;
+                messageInput.disabled = false;
+                recordBtn.disabled = false;
+                applyVoiceBtn.disabled = false;
+                voiceSelect.disabled = false;
                 clearHistoryBtn.disabled = false;
             } else {
                 statusDot.classList.remove('connected');
                 statusDot.classList.add('disconnected');
                 statusText.textContent = 'Disconnected';
-                
                 connectBtn.disabled = false;
                 disconnectBtn.disabled = true;
-                messageInput.disabled = true;
                 sendBtn.disabled = true;
+                messageInput.disabled = true;
+                recordBtn.disabled = true;
+                applyVoiceBtn.disabled = true;
+                voiceSelect.disabled = true;
                 clearHistoryBtn.disabled = true;
-                
-                // Hide typing indicator
-                typingIndicator.style.display = 'none';
             }
         }
-        
-        // Add message to chat
-        function addMessage(text, sender) {
-            const messageDiv = document.createElement('div');
-            messageDiv.classList.add('message');
-            messageDiv.classList.add(sender + '-message');
-            messageDiv.textContent = text;
+
+        function updateVoiceSelector(voices, currentVoice) {
+            // Clear existing options
+            voiceSelect.innerHTML = '';
             
-            // Insert before typing indicator
-            chatMessages.insertBefore(messageDiv, typingIndicator);
+            // Add available voices
+            voices.forEach(voice => {
+                const option = document.createElement('option');
+                option.value = voice;
+                option.textContent = voice;
+                if (voice === currentVoice) {
+                    option.selected = true;
+                }
+                voiceSelect.appendChild(option);
+            });
+        }
+
+        function addMessage(text, sender, complete = true) {
+            const messageId = 'msg-' + Date.now();
+            const messageDiv = document.createElement('div');
+            messageDiv.id = messageId;
+            messageDiv.className = `message ${sender}-message`;
+            
+            const textDiv = document.createElement('div');
+            textDiv.className = 'message-text';
+            textDiv.textContent = text;
+            
+            messageDiv.appendChild(textDiv);
+            chatMessages.appendChild(messageDiv);
+            
+            if (complete) {
+                messageDiv.dataset.complete = 'true';
+            }
             
             // Scroll to bottom
             chatMessages.scrollTop = chatMessages.scrollHeight;
+            
+            return messageId;
         }
-        
-        // Send message to server
+
+        function addAudioControls(messageId, audioData) {
+            const messageDiv = document.getElementById(messageId);
+            if (!messageDiv) return;
+            
+            // Check if audio controls already exist
+            if (messageDiv.querySelector('.audio-controls')) return;
+            
+            const audioControls = document.createElement('div');
+            audioControls.className = 'audio-controls';
+            
+            const audioElement = document.createElement('audio');
+            audioElement.src = `data:audio/wav;base64,${audioData}`;
+            audioElement.style.display = 'none';
+            
+            const playButton = document.createElement('button');
+            playButton.className = 'play-button';
+            playButton.innerHTML = '▶';
+            playButton.addEventListener('click', () => {
+                audioElement.play();
+            });
+            
+            audioControls.appendChild(playButton);
+            audioControls.appendChild(audioElement);
+            messageDiv.appendChild(audioControls);
+        }
+
         function sendMessage() {
             const text = messageInput.value.trim();
-            
             if (text && socket && socket.readyState === WebSocket.OPEN) {
-                // Add message to chat
+                // Add user message to chat
                 addMessage(text, 'user');
                 
                 // Send message to server
@@ -367,9 +655,15 @@
                 messageInput.value = '';
                 
                 // Show typing indicator
-                typingIndicator.style.display = 'block';
+                typingIndicator.style.display = 'flex';
             }
         }
+
+        // Auto-connect on page load
+        window.addEventListener('load', () => {
+            updateConnectionStatus(false);
+            connectToWebSocket();
+        });
     </script>
 </body>
 </html>

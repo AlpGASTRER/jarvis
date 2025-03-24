@@ -21,6 +21,10 @@ Dependencies:
 - Jarvis: Core AI assistant functionality
 """
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
 import uvicorn
 from fastapi import FastAPI, HTTPException, WebSocket, Query, Depends, Header, WebSocketDisconnect, File, Form, UploadFile, Request, Response
 from fastapi.responses import StreamingResponse, JSONResponse

@@ -1,5 +1,6 @@
 # Core dependencies - essential for production
 google-generativeai>=0.7.0  # Updated for Live API support with v1alpha
+google-genai>=1.0.0  # New SDK for Gemini 2.0 with Live API support
 python-dotenv==1.0.0
 
 # Audio processing - required for voice features
@@ -13,11 +14,11 @@ webrtcvad==2.0.10
 torch==2.1.0+cpu  # CPU-only version
 
 # API dependencies - required for serving
-fastapi==0.104.1
+fastapi>=0.115.0  # Updated to support anyio 4.x
 uvicorn[standard]==0.24.0
 pydantic==2.5.2
-websockets==12.0
-starlette>=0.27.0
+websockets>=13.0.0
+starlette>=0.40.0  # Updated for compatibility with new FastAPI
 httpx>=0.24.1
 requests==2.31.0
 
